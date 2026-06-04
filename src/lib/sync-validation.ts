@@ -74,7 +74,6 @@ LOWER_TO_CANONICAL["textchatservice"] = "TextChatService";
 LOWER_TO_CANONICAL["materialservice"] = "MaterialService";
 LOWER_TO_CANONICAL["httpservice"] = "HttpService";
 
-
 // Services that are valid to fetch via game:GetService("X") but are NOT valid
 // parent containers (so they don't belong in VALID_SERVICES above). Without
 // this, scripts that legitimately use Players, RunService, TweenService, etc.
@@ -182,6 +181,11 @@ const CLIENT_AUTHORITY_PATTERNS: Array<{ re: RegExp; message: string }> = [
   },
 ];
 
+const FAKE_PLACEHOLDER_NAME_RE =
+  /^(placeholder|todo|tbd|wip|example|sample|test|test\d+|unfinished|stub)$/i;
+const STUB_SOURCE_RE =
+  /(?:--\s*)?(?:TODO|your code here|add logic here|fill this in|rest of code|continue here|placeholder implementation|stub only)/i;
+
 // Invented / non-existent Roblox Instance classes that the AI sometimes
 // hallucinates. We auto-remap to a real equivalent when possible, otherwise
 // drop the action. Studio's `Instance.new("DirectionalLight")` throws
@@ -205,6 +209,25 @@ function rootOf(loc: string): string {
 function isUnderAny(loc: string, roots: string[]): boolean {
   const r = rootOf(loc);
   return roots.includes(r);
+}
+
+function normalizeActionProps(action: GenAction): GenAction {
+  if (!action || typeof action !== "object") return action;
+  const out: GenAction = { ...action };
+  const legacyProps = out.props;
+  if (
+    legacyProps &&
+    out.properties &&
+    typeof legacyProps === "object" &&
+    typeof out.properties === "object"
+  ) {
+    out.properties = { ...legacyProps, ...out.properties };
+    delete out.props;
+  } else if (legacyProps && out.properties === undefined) {
+    out.properties = legacyProps;
+    delete out.props;
+  }
+  return out;
 }
 
 // Cheap Luau balance check — counts block openers vs closers. Strings,
@@ -349,6 +372,16 @@ export function validateGenerated(
       continue;
     }
 
+    if (STUB_SOURCE_RE.test(f.content)) {
+      errors.push({
+        level: "error",
+        scope: "file",
+        target,
+        message: "script contains placeholder/stub text instead of finished Luau",
+      });
+      continue;
+    }
+
     for (const pattern of BACKDOOR_PATTERNS) {
       if (pattern.re.test(f.content)) {
         errors.push({
@@ -412,8 +445,9 @@ export function validateGenerated(
 
   // 2. Actions
   const seenRemoteNames = new Set<string>();
-  for (const a of actions) {
-    const target = `${a.type}:${a.name ?? a.path ?? "?"}`;
+  for (const rawAction of actions) {
+    const a = normalizeActionProps(rawAction);
+    const target = `${a?.type ?? "action"}:${a?.name ?? a?.path ?? "?"}`;
     if (!a || typeof a !== "object" || typeof a.type !== "string") {
       errors.push({
         level: "error",
@@ -530,6 +564,16 @@ export function validateGenerated(
         });
         continue;
       }
+    }
+
+    if (typeof a.name === "string" && FAKE_PLACEHOLDER_NAME_RE.test(a.name.trim())) {
+      errors.push({
+        level: "error",
+        scope: "action",
+        target,
+        message: `placeholder object name "${a.name}" is not allowed in generated builds`,
+      });
+      continue;
     }
 
     if (a.type === "move") {
@@ -665,7 +709,8 @@ export function validateGenerated(
         level: "error",
         scope: "security",
         target,
-        message: "terrainClear blocked to prevent wiping useful terrain; add new terrain/map folders instead",
+        message:
+          "terrainClear blocked to prevent wiping useful terrain; add new terrain/map folders instead",
       });
       continue;
     }
@@ -776,9 +821,7 @@ export function validateGenerated(
     }
 
     const containerIsFilled = (path: string) =>
-      filledPrefixes.some(
-        (used) => used === path || used.startsWith(path + "/"),
-      );
+      filledPrefixes.some((used) => used === path || used.startsWith(path + "/"));
     const containerIsReferenced = (a: GenAction) => {
       const n = String(a.name ?? "").trim();
       return n.length > 0 && referencedNames.has(n);
@@ -871,7 +914,9 @@ export function autoRepairResult(
       if (root !== canonicalRoot) {
         parts[0] = canonicalRoot;
         normServiceLoc = parts.join("/");
-        repairs.push(`Normalized service location casing: ${file.service_location} -> ${normServiceLoc}`);
+        repairs.push(
+          `Normalized service location casing: ${file.service_location} -> ${normServiceLoc}`,
+        );
       }
     }
 
@@ -956,7 +1001,7 @@ export function autoRepairResult(
 
   for (const a of actions) {
     if (!a || typeof a !== "object" || !a.type) continue;
-    const act = { ...a };
+    const act = normalizeActionProps({ ...a });
 
     // Casing Normalization for actions
     if (typeof act.parent === "string" && act.parent) {
@@ -966,7 +1011,9 @@ export function autoRepairResult(
       if (root !== canonicalRoot) {
         parts[0] = canonicalRoot;
         act.parent = parts.join("/");
-        repairs.push(`Normalized parent casing for "${act.name || act.type}": ${a.parent} -> ${act.parent}`);
+        repairs.push(
+          `Normalized parent casing for "${act.name || act.type}": ${a.parent} -> ${act.parent}`,
+        );
       }
     }
     if (typeof act.path === "string" && act.path) {
@@ -1036,7 +1083,11 @@ export function autoRepairResult(
     if (VALID_SERVICES.has(root) && fullParentPath === root) {
       return;
     }
-    if (existingSet.has(fullParentPath) || createdSet.has(fullParentPath) || foldersToCreate.has(fullParentPath)) {
+    if (
+      existingSet.has(fullParentPath) ||
+      createdSet.has(fullParentPath) ||
+      foldersToCreate.has(fullParentPath)
+    ) {
       return;
     }
 
@@ -1051,7 +1102,12 @@ export function autoRepairResult(
   };
 
   for (const act of repairedActions) {
-    if (act.type === "create" || act.type === "folder" || act.type === "script" || act.type === "create_script") {
+    if (
+      act.type === "create" ||
+      act.type === "folder" ||
+      act.type === "script" ||
+      act.type === "create_script"
+    ) {
       const parentPath = norm(act.parent);
       if (parentPath) {
         checkAndQueueParent(parentPath);

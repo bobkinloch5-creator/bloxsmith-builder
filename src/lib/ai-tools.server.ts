@@ -110,21 +110,29 @@ function assetQualityScore(item: any, query: string, groupLabel = "") {
   const relevance = queryTerms.reduce((sum, term) => sum + (name.includes(term) ? 18 : 0), 0);
   const voteCount = Number(item?.voteCount ?? 0);
   const upVotePercent = Number(item?.upVotePercent ?? 0);
-  const voteScore = Math.min(
-    45,
-    upVotePercent * Math.log10(voteCount + 1),
-  );
+  const voteScore = Math.min(45, upVotePercent * Math.log10(voteCount + 1));
   const favorites = Number(item?.favorites ?? 0);
   const favoriteScore = Math.min(30, Math.log10(favorites + 1) * 10);
   // Reward high-quality naming (descriptive names, not "Model" or "Part")
-  const nameQuality = name.length > 8 && !/^(model|part|asset|thing|test|new|copy|old)$/i.test(name) ? 8 : 0;
+  const nameQuality =
+    name.length > 8 && !/^(model|part|asset|thing|test|new|copy|old)$/i.test(name) ? 8 : 0;
   const trustScore = item?.verified || creator === "roblox" ? 25 : 0;
   const freeScore = (item?.price ?? 0) === 0 ? 20 : -100;
   const saleScore = item?.isForSale === false ? -20 : 0;
   const riskyPenalty = hasUnsafeAssetTerms(item) ? -250 : 0;
   // Penalize very low vote counts harder (likely low-quality or abandoned)
   const lowVotePenalty = voteCount < 3 ? -15 : 0;
-  return relevance + voteScore + favoriteScore + nameQuality + trustScore + freeScore + saleScore + riskyPenalty + lowVotePenalty;
+  return (
+    relevance +
+    voteScore +
+    favoriteScore +
+    nameQuality +
+    trustScore +
+    freeScore +
+    saleScore +
+    riskyPenalty +
+    lowVotePenalty
+  );
 }
 
 function dedupeAndRankAssets(
@@ -411,10 +419,7 @@ function buildToolboxPlanGroups(prompt: string, requestedTypes: string[] = []): 
     ]);
   }
   if (/\b(jungle|safari|tropical forest|rainforest)\b/.test(lower)) {
-    add("Jungle Map", "Models", "Workspace/Map/ToolboxMap", 2, [
-      "jungle map",
-      "tropical forest",
-    ]);
+    add("Jungle Map", "Models", "Workspace/Map/ToolboxMap", 2, ["jungle map", "tropical forest"]);
     add("Jungle Props", "Models", "Workspace/Map/Nature", 3, [
       "jungle tree",
       "vine bridge",
@@ -439,11 +444,7 @@ function buildToolboxPlanGroups(prompt: string, requestedTypes: string[] = []): 
       "sand dune map",
       "pyramid temple",
     ]);
-    add("Desert Props", "Models", "Workspace/Map/Props", 3, [
-      "cactus",
-      "oasis",
-      "desert ruins",
-    ]);
+    add("Desert Props", "Models", "Workspace/Map/Props", 3, ["cactus", "oasis", "desert ruins"]);
   }
   if (/\b(japanese|anime|sakura|torii|pagoda|japan|ninja|samurai)\b/.test(lower)) {
     add("Japanese Map", "Models", "Workspace/Map/ToolboxMap", 2, [
@@ -469,10 +470,7 @@ function buildToolboxPlanGroups(prompt: string, requestedTypes: string[] = []): 
     ]);
   }
   if (/\b(farm|ranch|barn|crop|harvest|animal farm)\b/.test(lower)) {
-    add("Farm Map", "Models", "Workspace/Map/ToolboxMap", 2, [
-      "farm map",
-      "ranch map",
-    ]);
+    add("Farm Map", "Models", "Workspace/Map/ToolboxMap", 2, ["farm map", "ranch map"]);
     add("Farm Props", "Models", "Workspace/Map/Props", 3, [
       "barn",
       "tractor",
@@ -482,7 +480,11 @@ function buildToolboxPlanGroups(prompt: string, requestedTypes: string[] = []): 
   }
 
   // ── Auto-add skybox for any map/world build ──────────────────────
-  if (/\b(map|world|city|island|forest|desert|jungle|space|ocean|winter|horror|fantasy|village|town|beach)\b/.test(lower)) {
+  if (
+    /\b(map|world|city|island|forest|desert|jungle|space|ocean|winter|horror|fantasy|village|town|beach)\b/.test(
+      lower,
+    )
+  ) {
     add("Skybox", "Decals", "Lighting/Skybox", 1, [
       `${theme} skybox`,
       "roblox skybox",
@@ -541,6 +543,7 @@ export async function planRobloxToolboxAssets(opts: {
       removeUnsafeScripts: group.category === "Models",
       removeScriptsFromDecorativeAssets: group.category === "Models",
       freeOnly: true,
+      verifiedFree: true,
       publicOnly: true,
       requiresApprovalIfScriptsFound: group.category === "Models",
       looped: group.category === "Audio" ? true : undefined,
@@ -633,6 +636,20 @@ async function fetchAssetDetails(assetId: number) {
   }
 }
 
+export async function verifyRobloxAssetForInsertion(assetId: number): Promise<{
+  ok: boolean;
+  reason?: string;
+  details?: any;
+}> {
+  const details = await fetchAssetDetails(assetId);
+  if (!details) return { ok: false, reason: "asset metadata unavailable" };
+  if ((details.price ?? 0) !== 0) return { ok: false, reason: "asset is not free", details };
+  if (hasUnsafeAssetTerms(details)) {
+    return { ok: false, reason: "asset metadata contains unsafe terms", details };
+  }
+  return { ok: true, details };
+}
+
 // Legacy free-model search — the SAME proven endpoint the website's Toolbox
 // browse page uses. apis.roblox.com/toolbox-service is flaky/region-gated and
 // often returns nothing, which is what leaves the map as empty folders. This
@@ -705,9 +722,9 @@ export async function searchRobloxAssets(
       const url = `https://apis.roblox.com/toolbox-service/v1/marketplace/${toolboxCat}?keyword=${encodeURIComponent(query)}&limit=${fetchLimit}`;
       const r = await fetch(url, { headers: RBX_HEADERS });
       const ids: number[] = r.ok
-        ? ((await r.json()) as any).data
+        ? (((await r.json()) as any).data
             ?.map((x: any) => x.id)
-            .filter((n: any) => typeof n === "number") ?? []
+            .filter((n: any) => typeof n === "number") ?? [])
         : [];
       if (ids.length > 0) {
         const detailIds = ids.slice(0, Math.min(ids.length, 20));

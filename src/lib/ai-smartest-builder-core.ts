@@ -137,8 +137,19 @@ Every generated system should include:
 - Leaderstats integration when currency/progression is involved.
 - DataStore-safe persistence only on the server, using pcall and UpdateAsync when changing saved records.
 - Mobile-friendly UI sizing using Scale, AnchorPoint, UIAspectRatioConstraint where useful.
+- Professional UI and loading screens for every whole-game build: main menu, themed loading screen, HUD/currency display, notifications, settings, and any genre-specific panels such as inventory, quests, gamepass shop, team selection, or leaderboard.
 - Clear names that match the feature.
 - Existing-file awareness: modify or extend matching existing systems instead of duplicating.
+
+## Professional UI systems rule (HARD RULE)
+BloxSmith must generate clean, modern, premium Roblox-style UI for every game or gameplay system it builds. No basic, messy, static, unfinished, or default-looking interfaces.
+- Every full game must include a themed UI stack: MainMenu, LoadingScreen, HUD/CurrencyDisplay, Notifications, SettingsMenu, and any requested or genre-required UI (GamepassShop, Inventory, QuestLog, TeamSelect, Leaderboard, RoundStatus, Shop, UpgradePanel).
+- Loading screens must look polished and animated: full-screen themed background, title/logo area, animated progress/status, subtle gradients/strokes, fade-out or slide-out, and mobile-safe scaling.
+- UI must match the game theme: city UI feels urban/neon, simulator UI feels bright/reward-focused, obby UI feels stage/checkpoint focused, tycoon UI feels cash/build focused, horror UI feels dark/atmospheric, roleplay UI feels clean/social.
+- Every ScreenGui needs functional LocalScript behavior: open/close, button hover/press tweens, mount animation, click/notification sounds where useful, and RemoteEvent wiring when gameplay changes.
+- All UI must be mobile-friendly: UDim2 scale-based layout, UISizeConstraint clamps, 44px+ tap targets, readable text on 360px screens, no clipped buttons, no desktop-only assumptions.
+- UI is not decoration only. Currency displays update from leaderstats/remotes, shops call validated server remotes, inventories/quests render real data, notifications fire from real gameplay events, and settings toggles actually change local settings.
+- If a build includes monetization/gamepasses/dev products, provide a real UI shell and server receipt/ownership validation, with IDs clearly configurable rather than fake working purchases.
 
 ## Mobile-first website and chat rule
 BloxSmith must feel great on phones. For mobile UI and website/chat changes:
@@ -315,6 +326,8 @@ export const SMART_BUILDER_QUALITY_GATES = [
   "Validates RemoteEvents and RemoteFunctions with cooldowns and type checks",
   "Uses pcall and UpdateAsync for DataStore writes where appropriate",
   "Creates mobile-friendly UI when generating ScreenGuis",
+  "Builds professional, themed, animated, mobile-friendly UI systems for every whole-game request",
+  "Includes premium loading screens, HUD/currency, notifications, settings, and genre-specific UI panels where needed",
   "Keeps the website chat/input/buttons usable on 360px mobile screens",
   "Provides a real Image button/workflow for Roblox thumbnails, icons, decals, badges, and promo art",
   "Modifies existing systems instead of duplicating them",
@@ -441,8 +454,11 @@ If a single requirement is genuinely ambiguous, pick the most common Roblox inte
 - Think in connected systems: dependencies first, visible edit-mode objects second, scripts/remotes/modules/UI third, tests last.
 - Reuse existing project systems when the context shows them; create uniquely named additions when unsure.
 - Prefer high-quality Roblox outcomes over tiny demos: full-screen UI backgrounds for menus, real server authority for gameplay, mobile-safe UI, polish/VFX/audio where relevant.
+- PROFESSIONAL UI PASS: every game build must include premium, functional UI that matches the theme. Minimum whole-game stack: MainMenu, LoadingScreen, HUD/CurrencyDisplay, Notifications, SettingsMenu, plus genre-specific panels (Inventory, QuestLog, GamepassShop, TeamSelect, Leaderboard, RoundStatus, Shop, UpgradePanel) when the genre needs them. UI must use responsive scale-based layout, 44px+ mobile tap targets, UICorner/UIStroke/UIGradient/UIPadding polish, TweenService hover/press/mount animations, and real data/remotes behind every button.
+- LOADING SCREEN PASS: loading screens must look amazing and themed, with full-screen art/gradient treatment, animated status/progress, subtle effects, and a clean fade or slide exit. Never ship a plain label and bar when a full game is requested.
 - Self-repair before output: if a script references a RemoteEvent, ModuleScript, GUI, tool, folder, or asset that is missing, create it or guard it in the same batch.
 - NO EMPTY OR DUPLICATE FOLDERS: only create a Folder/Model if you also place real content inside it in the SAME response (parts, scripts, UI, NPCs, assets, or a script that references it). Never emit a folder you do not fill. Before creating a folder, check it does not already exist in the project context or earlier in this same batch — reuse the existing one instead of making a second folder with the same name. A build full of empty or duplicated folders is a failed build.
+- MODEL RELIABILITY PASS: choose the strongest available model for full games, complex prompts, image/reference builds, and multi-system requests; use fast models only for small edits. Use web/Roblox docs/search tools when current APIs, Toolbox assets, or implementation details are uncertain, then emit validated actions instead of guesses.
 - Explain briefly where things go and how to test them, but keep the structured JSON valid and action-focused.
 
 ### Whole-game / big genre requests (e.g. "build a GTA-style open-world game", "make a tycoon", "full simulator")
@@ -450,27 +466,41 @@ When the user asks for a whole game or names a genre, treat it as a complete pro
 1. IDENTIFY THE GENRE and the systems that genre implies. Examples: open-world/GTA → city map (roads, districts, buildings, props) + driveable vehicles + walking NPCs + economy/cash + wanted level + jobs + missions + save data + HUD/UI; tycoon → plots + droppers + conveyor + cash + buttons + rebirths + save; simulator → click/collect loop + currency + shop + upgrades + rebirths + pets + save; obby → staged course + checkpoints + respawn + win condition.
 2. RESEARCH WHEN ENABLED: if web_search / roblox_docs_search tools are available and the genre or any API is one you are not fully sure about, search FIRST for how comparable Roblox games structure that system, then design from what you learn. Never copy others' code or assets — translate the pattern into your own Roblox-safe implementation. If tools are unavailable, proceed from your own knowledge; never stall waiting for research.
 3. PLAN BEFORE BUILDING: lay out the full system list and build them in dependency order — data/remotes/config first, then server systems, then client controllers, then UI, then the visible map/world. Make sure the map actually looks like the genre (a GTA city must have roads + districts + buildings, never four tycoon plots).
-4. BUILD COMPLETELY, NOT RANDOMLY: every system you include must be wired together and functional — server-authoritative, mobile-safe, organized into named folders, visible in edit mode. Do not emit empty stubs, loose parts, or half-finished systems. Prefer fewer systems done FULLY over many stubbed.
-5. IF TOO BIG FOR ONE PASS: build the core loop + map + the most important 2–4 systems completely, then end your message naming the exact next systems to add. Never pad the build with random unrelated features to look bigger.
+4. BUILD THE UI LIKE A REAL GAME: include a professional loading screen, main menu/HUD, notifications, settings, and any genre-specific panels that prove the systems are usable. UI must be functional, animated, themed, and mobile-friendly, not a static mockup.
+5. BUILD COMPLETELY, NOT RANDOMLY: every system you include must be wired together and functional — server-authoritative, mobile-safe, organized into named folders, visible in edit mode. Do not emit empty stubs, loose parts, or half-finished systems. Prefer fewer systems done FULLY over many stubbed.
+6. IF TOO BIG FOR ONE PASS: build the core loop + map + the most important 2–4 systems completely, including the UI needed to play/test them, then end your message naming the exact next systems to add. Never pad the build with random unrelated features to look bigger.
 `;
 
-type SmartIntent =
-  | "BUILD"
-  | "EDIT"
-  | "FIX"
-  | "POLISH"
-  | "ASSET"
-  | "IMAGE"
-  | "QUESTION"
-  | "META";
+type SmartIntent = "BUILD" | "EDIT" | "FIX" | "POLISH" | "ASSET" | "IMAGE" | "QUESTION" | "META";
 
 const INTENT_RULES: Array<{ intent: SmartIntent; pattern: RegExp }> = [
-  { intent: "FIX", pattern: /\b(fix|broken|error|bug|not working|doesn'?t work|failed|missing|issue|debug|why)\b/i },
-  { intent: "POLISH", pattern: /\b(polish|better|improve|premium|clean|smooth|less laggy|optimi[sz]e|effects?|vfx|particles?|animate|animation)\b/i },
-  { intent: "ASSET", pattern: /\b(toolbox|asset|model id|free model|decal|sound|music|skybox|mesh|catalog)\b/i },
-  { intent: "IMAGE", pattern: /\b(image|thumbnail|icon|logo|decal|badge|gamepass|banner|poster|picture|background art)\b/i },
-  { intent: "EDIT", pattern: /\b(change|update|move|rename|resize|recolor|replace|swap|remove|delete)\b/i },
-  { intent: "BUILD", pattern: /\b(make|add|create|build|generate|spawn|insert|give me|i want|need|ui|gui|system|game|map|shop|menu|hud|tool)\b/i },
+  {
+    intent: "FIX",
+    pattern: /\b(fix|broken|error|bug|not working|doesn'?t work|failed|missing|issue|debug|why)\b/i,
+  },
+  {
+    intent: "POLISH",
+    pattern:
+      /\b(polish|better|improve|premium|clean|smooth|less laggy|optimi[sz]e|effects?|vfx|particles?|animate|animation)\b/i,
+  },
+  {
+    intent: "ASSET",
+    pattern: /\b(toolbox|asset|model id|free model|decal|sound|music|skybox|mesh|catalog)\b/i,
+  },
+  {
+    intent: "IMAGE",
+    pattern:
+      /\b(image|thumbnail|icon|logo|decal|badge|gamepass|banner|poster|picture|background art)\b/i,
+  },
+  {
+    intent: "EDIT",
+    pattern: /\b(change|update|move|rename|resize|recolor|replace|swap|remove|delete)\b/i,
+  },
+  {
+    intent: "BUILD",
+    pattern:
+      /\b(make|add|create|build|generate|spawn|insert|give me|i want|need|ui|gui|system|game|map|shop|menu|hud|tool)\b/i,
+  },
   { intent: "META", pattern: /\b(cancel|stop|undo|revert|clear chat)\b/i },
   { intent: "QUESTION", pattern: /\b(how|what|why|when|where|explain)\b/i },
 ];
@@ -484,57 +514,138 @@ const SYSTEM_DEPENDENCIES: Array<{ name: string; pattern: RegExp; deps: string[]
   {
     name: "Tycoon",
     pattern: /\b(tycoon|dropper|conveyor|collector|owner door|purchase pad)\b/i,
-    deps: ["Cash/leaderstats", "Plot ownership", "Purchase validation", "Templates", "Collector", "Save data"],
+    deps: [
+      "Cash/leaderstats",
+      "Plot ownership",
+      "Purchase validation",
+      "Templates",
+      "Collector",
+      "Save data",
+    ],
   },
   {
     name: "Obby",
     pattern: /\b(obby|checkpoint|stage|killbrick|jump pad|moving platform)\b/i,
-    deps: ["Checkpoints", "Stage save", "Spawn locations", "Hazards", "Finish reward", "Mobile HUD"],
+    deps: [
+      "Checkpoints",
+      "Stage save",
+      "Spawn locations",
+      "Hazards",
+      "Finish reward",
+      "Mobile HUD",
+    ],
   },
   {
     name: "Combat",
     pattern: /\b(combat|weapon|sword|gun|boss|enemy|npc|damage|ability|skill|pvp)\b/i,
-    deps: ["Server hit validation", "Cooldowns", "Tools/animations", "VFX/SFX", "Health/rewards", "Anti-exploit checks"],
+    deps: [
+      "Server hit validation",
+      "Cooldowns",
+      "Tools/animations",
+      "VFX/SFX",
+      "Health/rewards",
+      "Anti-exploit checks",
+    ],
   },
   {
     name: "UI",
-    pattern: /\b(ui|gui|menu|hud|shop screen|settings|inventory|loading|splash|main menu|button|panel)\b/i,
-    deps: ["StarterGui ScreenGui", "Responsive frames", "TweenService polish", "Input handlers", "Server remotes if gameplay changes"],
+    pattern:
+      /\b(ui|gui|menu|hud|shop screen|settings|inventory|loading|splash|main menu|button|panel)\b/i,
+    deps: [
+      "StarterGui ScreenGui",
+      "Responsive frames",
+      "TweenService polish",
+      "Input handlers",
+      "Server remotes if gameplay changes",
+    ],
   },
   {
     name: "Economy",
-    pattern: /\b(coins?|cash|gems?|credits?|shop|buy|sell|reward|daily|code|promo|gamepass|developer product)\b/i,
-    deps: ["Server authority", "Leaderstats", "DataService", "Purchase validation", "Receipts/rewards", "Confirmation UI"],
+    pattern:
+      /\b(coins?|cash|gems?|credits?|shop|buy|sell|reward|daily|code|promo|gamepass|developer product)\b/i,
+    deps: [
+      "Server authority",
+      "Leaderstats",
+      "DataService",
+      "Purchase validation",
+      "Receipts/rewards",
+      "Confirmation UI",
+    ],
   },
   {
     name: "World",
-    pattern: /\b(map|world|city|lobby|island|forest|school|horror|arena|base|background|village|town|beach|mountain|desert|jungle|space|underwater|ocean)\b/i,
-    deps: ["Workspace/Map folders", "SpawnLocation", "Lighting/PostFX", "Props/assets", "Collision/passability", "Performance budget"],
+    pattern:
+      /\b(map|world|city|lobby|island|forest|school|horror|arena|base|background|village|town|beach|mountain|desert|jungle|space|underwater|ocean)\b/i,
+    deps: [
+      "Workspace/Map folders",
+      "SpawnLocation",
+      "Lighting/PostFX",
+      "Props/assets",
+      "Collision/passability",
+      "Performance budget",
+    ],
   },
   {
     name: "Animation/VFX",
-    pattern: /\b(animation|animate|emote|walk|run|idle|particle|vfx|trail|beam|aura|explosion|spark|effect)\b/i,
-    deps: ["Animator-safe animation loading", "Reusable ReplicatedStorage/VFX helpers", "Debris cleanup", "Reasonable particle counts", "Preview/test step"],
+    pattern:
+      /\b(animation|animate|emote|walk|run|idle|particle|vfx|trail|beam|aura|explosion|spark|effect)\b/i,
+    deps: [
+      "Animator-safe animation loading",
+      "Reusable ReplicatedStorage/VFX helpers",
+      "Debris cleanup",
+      "Reasonable particle counts",
+      "Preview/test step",
+    ],
   },
   {
     name: "Clothing",
-    pattern: /\b(clothing|shirt|pants|hoodie|jacket|uniform|outfit|costume|hat|hair|wings|face accessory|wearable|t-?shirt|cape|backpack accessory|belt)\b/i,
-    deps: ["generate_clothing tool", "Gemini image API", "Correct kind selection", "Upload guidance"],
+    pattern:
+      /\b(clothing|shirt|pants|hoodie|jacket|uniform|outfit|costume|hat|hair|wings|face accessory|wearable|t-?shirt|cape|backpack accessory|belt)\b/i,
+    deps: [
+      "generate_clothing tool",
+      "Gemini image API",
+      "Correct kind selection",
+      "Upload guidance",
+    ],
   },
   {
     name: "Vehicle",
-    pattern: /\b(vehicle|car|truck|boat|plane|helicopter|motorcycle|bike|kart|race car|ambulance|police car|taxi|bus|train)\b/i,
-    deps: ["VehicleSeat", "Drive script", "Spawn system", "Ownership/claiming", "Garage", "Mobile controls"],
+    pattern:
+      /\b(vehicle|car|truck|boat|plane|helicopter|motorcycle|bike|kart|race car|ambulance|police car|taxi|bus|train)\b/i,
+    deps: [
+      "VehicleSeat",
+      "Drive script",
+      "Spawn system",
+      "Ownership/claiming",
+      "Garage",
+      "Mobile controls",
+    ],
   },
   {
     name: "NPC",
-    pattern: /\b(npc|character|enemy|boss|monster|zombie|guard|villager|merchant|quest giver|shopkeeper|pet|companion|ally)\b/i,
-    deps: ["Humanoid setup", "Pathfinding", "State machine", "Damage/health", "Respawn/despawn", "Loot/rewards"],
+    pattern:
+      /\b(npc|character|enemy|boss|monster|zombie|guard|villager|merchant|quest giver|shopkeeper|pet|companion|ally)\b/i,
+    deps: [
+      "Humanoid setup",
+      "Pathfinding",
+      "State machine",
+      "Damage/health",
+      "Respawn/despawn",
+      "Loot/rewards",
+    ],
   },
   {
     name: "DataPersistence",
-    pattern: /\b(save|load|datastore|data store|persist|progress|inventory save|stats save|leaderboard)\b/i,
-    deps: ["DataStoreService", "pcall wrapping", "UpdateAsync", "BindToClose handler", "Session locking", "Default data template"],
+    pattern:
+      /\b(save|load|datastore|data store|persist|progress|inventory save|stats save|leaderboard)\b/i,
+    deps: [
+      "DataStoreService",
+      "pcall wrapping",
+      "UpdateAsync",
+      "BindToClose handler",
+      "Session locking",
+      "Default data template",
+    ],
   },
 ];
 
@@ -555,7 +666,9 @@ export function extractPromptRequirements(prompt: string): string[] {
   // Split on sentence/line boundaries and common conjunctions that separate
   // independent instructions, while keeping short phrases intact.
   const parts = cleaned
-    .split(/(?:\n+|[.!?；;]+|,\s*(?:and|also|plus|then|but)\b|\b(?:and also|also make|then make|plus|as well as)\b)/i)
+    .split(
+      /(?:\n+|[.!?；;]+|,\s*(?:and|also|plus|then|but)\b|\b(?:and also|also make|then make|plus|as well as)\b)/i,
+    )
     .map((p) => p.replace(/^[\s,-]+|[\s,-]+$/g, "").trim())
     .filter((p) => p.length > 2);
   // De-duplicate near-identical fragments.
@@ -621,7 +734,9 @@ export function buildSmartContextBlock(
           .join("  ")}`
       : "",
     `Studio context: ${options?.studioConnected ? "plugin connected" : "plugin not connected or unknown"}; live instances: ${options?.liveInstanceCount ?? "unknown"}; saved files: ${options?.fileCount ?? 0}`,
-    options?.hasVisionImages ? "Vision input: user attached image(s); inspect them for UI/layout/error clues before building." : "",
+    options?.hasVisionImages
+      ? "Vision input: user attached image(s); inspect them for UI/layout/error clues before building."
+      : "",
     isWholeGameGenre
       ? "Tool strategy: this is a whole-game genre build. If web_search/roblox_docs_search are available, research how comparable Roblox games structure these systems FIRST, then design your own Roblox-safe version. Use roblox_toolbox_asset_plan for the map/props. Verify assets are free/safe; never invent asset IDs or copy others' code."
       : shouldUseTools

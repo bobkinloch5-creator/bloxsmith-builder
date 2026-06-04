@@ -1445,7 +1445,7 @@ end)
         className: "Tool",
         name,
         parent: "StarterPack/Tools",
-        props: {
+        properties: {
           RequiresHandle: true,
           CanBeDropped: true,
           ToolTip: `${name} — left click to fire`,
@@ -1522,16 +1522,16 @@ gui:Destroy()
         className: "ScreenGui",
         name: "LoadingScreen",
         parent: "StarterGui",
-        props: { IgnoreGuiInset: true, ResetOnSpawn: false, DisplayOrder: 9999 },
+        properties: { IgnoreGuiInset: true, ResetOnSpawn: false, DisplayOrder: 9999 },
       },
       {
         type: "create",
         className: "Frame",
         name: "Backdrop",
         parent: "StarterGui/LoadingScreen",
-        props: {
+        properties: {
           Size: { __t: "UDim2", xs: 1, xo: 0, ys: 1, yo: 0 },
-          BackgroundColor3: { __t: "Color3", r: 10 / 255, g: 12 / 255, b: 18 / 255 },
+          BackgroundColor3: { __t: "Color3", r: 10, g: 12, b: 18 },
           BorderSizePixel: 0,
         },
       },
@@ -1540,12 +1540,12 @@ gui:Destroy()
         className: "TextLabel",
         name: "TitleLabel",
         parent: "StarterGui/LoadingScreen/Backdrop",
-        props: {
+        properties: {
           Size: { __t: "UDim2", xs: 0.8, xo: 0, ys: 0, yo: 80 },
           Position: { __t: "UDim2", xs: 0.1, xo: 0, ys: 0.32, yo: 0 },
           BackgroundTransparency: 1,
           Text: title,
-          TextColor3: { __t: "Color3", r: 1, g: 1, b: 1 },
+          TextColor3: { __t: "Color3", r: 255, g: 255, b: 255 },
           TextScaled: true,
           Font: "GothamBold",
         },
@@ -1555,10 +1555,10 @@ gui:Destroy()
         className: "Frame",
         name: "BarBg",
         parent: "StarterGui/LoadingScreen/Backdrop",
-        props: {
+        properties: {
           Size: { __t: "UDim2", xs: 0.5, xo: 0, ys: 0, yo: 18 },
           Position: { __t: "UDim2", xs: 0.25, xo: 0, ys: 0.55, yo: 0 },
-          BackgroundColor3: { __t: "Color3", r: 0.12, g: 0.14, b: 0.2 },
+          BackgroundColor3: { __t: "Color3", r: 30, g: 36, b: 51 },
           BorderSizePixel: 0,
         },
       },
@@ -1567,9 +1567,9 @@ gui:Destroy()
         className: "Frame",
         name: "Fill",
         parent: "StarterGui/LoadingScreen/Backdrop/BarBg",
-        props: {
+        properties: {
           Size: { __t: "UDim2", xs: 0, xo: 0, ys: 1, yo: 0 },
-          BackgroundColor3: { __t: "Color3", r: 0.35, g: 0.7, b: 1 },
+          BackgroundColor3: { __t: "Color3", r: 90, g: 178, b: 255 },
           BorderSizePixel: 0,
         },
       },
@@ -1578,12 +1578,12 @@ gui:Destroy()
         className: "TextLabel",
         name: "StatusLabel",
         parent: "StarterGui/LoadingScreen/Backdrop",
-        props: {
+        properties: {
           Size: { __t: "UDim2", xs: 0.5, xo: 0, ys: 0, yo: 28 },
           Position: { __t: "UDim2", xs: 0.25, xo: 0, ys: 0.6, yo: 16 },
           BackgroundTransparency: 1,
           Text: "Loading 0%",
-          TextColor3: { __t: "Color3", r: 0.8, g: 0.85, b: 0.95 },
+          TextColor3: { __t: "Color3", r: 204, g: 217, b: 242 },
           TextScaled: true,
           Font: "Gotham",
         },
@@ -1926,7 +1926,15 @@ async function resolveSearchQueries(actions: any[]): Promise<any[]> {
         const best = items.find((item: any) => !usedAssetIds.has(Number(item.assetId)));
         if (best) {
           usedAssetIds.add(Number(best.assetId));
-          resolved.push({ ...a, assetId: best.assetId, name: a.name || best.name });
+          resolved.push({
+            ...a,
+            assetId: best.assetId,
+            name: a.name || best.name,
+            verifiedFree: true,
+            freeOnly: true,
+            publicOnly: true,
+            sourceQuery: a.searchQuery,
+          });
           console.log(
             `[Execute API] Resolved searchQuery "${a.searchQuery}" → assetId ${best.assetId} ("${best.name}")`,
           );
@@ -1947,6 +1955,47 @@ async function resolveSearchQueries(actions: any[]): Promise<any[]> {
   return resolved.filter((a) => !(a && a.type === "insert_toolbox_asset" && !a.assetId));
 }
 
+async function filterVerifiedToolboxActions(actions: GenAction[]): Promise<GenAction[]> {
+  const { verifyRobloxAssetForInsertion } = await import("@/lib/ai-tools.server");
+  const filtered: GenAction[] = [];
+  for (const action of actions) {
+    const isToolbox =
+      action?.type === "insert_toolbox_asset" ||
+      action?.type === "insertAsset" ||
+      action?.type === "sound" ||
+      action?.type === "decal" ||
+      action?.type === "image";
+    if (!isToolbox || !action.assetId) {
+      filtered.push(action);
+      continue;
+    }
+
+    const assetId = Number(action.assetId);
+    if (!Number.isFinite(assetId) || assetId <= 0) continue;
+
+    const verification = await verifyRobloxAssetForInsertion(assetId);
+    if (verification.ok) {
+      filtered.push({
+        ...action,
+        assetId,
+        verifiedFree: true,
+        assetName: action.assetName || verification.details?.name,
+      });
+      continue;
+    }
+
+    if (action.verifiedFree === true && verification.reason === "asset metadata unavailable") {
+      filtered.push(action);
+      continue;
+    }
+
+    console.warn(
+      `[Execute API] Dropped toolbox asset ${assetId}: ${verification.reason ?? "not verified"}`,
+    );
+  }
+  return filtered;
+}
+
 function mapGroqActionsToPlugin(actions: any[]): GenAction[] {
   const mapped: GenAction[] = [];
 
@@ -1955,6 +2004,7 @@ function mapGroqActionsToPlugin(actions: any[]): GenAction[] {
 
     const type = a.type || a.action_type;
     if (!type) continue;
+    const sourceProps = a.properties || a.props || {};
 
     if (type === "create_part") {
       mapped.push({
@@ -1978,7 +2028,7 @@ function mapGroqActionsToPlugin(actions: any[]): GenAction[] {
             b: a.color?.[2] ?? 165,
           },
           Anchored: a.anchored !== false,
-          ...(a.properties || {}),
+          ...sourceProps,
         },
       });
     } else if (type === "create_model") {
@@ -1988,7 +2038,7 @@ function mapGroqActionsToPlugin(actions: any[]): GenAction[] {
         name: a.name || "Model",
         parent: a.parent || "Workspace",
         properties: {
-          ...(a.properties || {}),
+          ...sourceProps,
         },
       });
     } else if (type === "create_folder") {
@@ -1998,7 +2048,7 @@ function mapGroqActionsToPlugin(actions: any[]): GenAction[] {
         name: a.name || "Folder",
         parent: a.parent || "Workspace",
         properties: {
-          ...(a.properties || {}),
+          ...sourceProps,
         },
       });
     } else if (
@@ -2032,7 +2082,7 @@ function mapGroqActionsToPlugin(actions: any[]): GenAction[] {
         className: a.className || "ScreenGui",
         name: a.name || "ScreenGui",
         parent: a.parent || "StarterGui",
-        properties: a.properties || {},
+        properties: sourceProps,
       });
     } else if (type === "create_terrain") {
       mapped.push({
@@ -2059,6 +2109,11 @@ function mapGroqActionsToPlugin(actions: any[]): GenAction[] {
       if (a.properties) {
         for (const k of Object.keys(a.properties)) {
           props[k] = coerceActionValue(k, a.properties[k]);
+        }
+      }
+      if (a.props) {
+        for (const k of Object.keys(a.props)) {
+          props[k] = coerceActionValue(k, a.props[k]);
         }
       }
       mapped.push({
@@ -2093,7 +2148,12 @@ function mapGroqActionsToPlugin(actions: any[]): GenAction[] {
         items: a.objects || a.items || [],
       });
     } else {
-      mapped.push(a);
+      if (a.props && !a.properties) {
+        const { props, ...rest } = a;
+        mapped.push({ ...rest, properties: props });
+      } else {
+        mapped.push(a);
+      }
     }
   }
 
@@ -3075,6 +3135,8 @@ export const Route = createFileRoute("/execute")({
               console.error("Safety net toolbox asset planning failed:", err);
             }
           }
+
+          mappedActions = await filterVerifiedToolboxActions(mappedActions);
 
           // Validation check
           const { data: existingForValidation } = await supabaseUser

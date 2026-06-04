@@ -1784,6 +1784,7 @@ function Actions.create(a)
 	if not parent then return false, "bad parent" end
 	local desiredClass = a.className or "Part"
 	local desiredName = a.name or desiredClass
+	local props = a.properties or a.props
 	-- If a placeholder (usually an auto-created Folder from resolvePath) already
 	-- exists at this name but is the wrong class, replace it with the requested
 	-- class and re-parent its existing children so we don't end up with a Folder
@@ -1797,12 +1798,14 @@ function Actions.create(a)
 			child.Parent = inst
 		end
 		existing:Destroy()
+	elseif existing then
+		inst = existing
 	else
 		inst = Instance.new(desiredClass)
 		inst.Name = desiredName
 	end
-	applyProps(inst, a.properties)
-	applyVisibleDefaults(inst, a.properties)
+	applyProps(inst, props)
+	applyVisibleDefaults(inst, props)
 	inst.Parent = parent
 	if a.children then
 		local childParentPath = (a.parent or "Workspace") .. "." .. inst.Name
@@ -1830,6 +1833,7 @@ function Actions.create_part(a)
 	normalizePersistentParent(a)
 	local parent = resolvePath(a.parent or "Workspace", true)
 	if not parent then return false, "bad parent" end
+	local props = a.properties or a.props
 	local part = Instance.new("Part")
 	part.Name = a.name or "Part"
 
@@ -1853,9 +1857,9 @@ function Actions.create_part(a)
 	part.CanCollide = true
 	part.Transparency = 0
 
-	applyProps(part, a.properties)
+	applyProps(part, props)
 	-- Final visibility safety net (size/position) without overriding explicit input.
-	local hasPos = (a.position ~= nil) or (a.properties and (a.properties.Position or a.properties.CFrame))
+	local hasPos = (a.position ~= nil) or (props and (props.Position or props.CFrame))
 	if not hasPos and part.Position.Magnitude < 0.01 then
 		part.CFrame = CFrame.new(0, 10, 0)
 	end
@@ -1881,7 +1885,7 @@ function Actions.set(a)
 					return c
 				end)
 				if ok and created then
-					applyProps(created, a.properties)
+					applyProps(created, a.properties or a.props)
 					return true
 				end
 			end
@@ -1889,7 +1893,7 @@ function Actions.set(a)
 		-- Soft-skip so a missing target (e.g. Workspace.Baseplate on empty places) doesn't fail the whole batch
 		return true, "skipped (path not found): " .. tostring(a.path)
 	end
-	applyProps(inst, a.properties)
+	applyProps(inst, a.properties or a.props)
 	return true
 end
 
@@ -1982,7 +1986,7 @@ end
 function Actions.service(a)
 	local svc = getService(a.service)
 	if not svc then return false, "no service" end
-	applyProps(svc, a.properties)
+	applyProps(svc, a.properties or a.props)
 	return true
 end
 
@@ -2023,7 +2027,7 @@ end
 
 -- Lighting preset
 function Actions.lighting(a)
-	applyProps(Lighting, a.properties or {})
+	applyProps(Lighting, a.properties or a.props or {})
 	return true
 end
 

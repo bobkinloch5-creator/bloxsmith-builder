@@ -265,24 +265,383 @@ end
   }
 
   // Map / world / tycoon / city → build a REAL procedural layout, not a folder.
-  if (/\b(map|world|city|town|island|tycoon|lobby|arena|plot|base|kingdom|village|open[-\s]?world|gta|grand theft|crime|wanted|vehicles?|cars?|garage|missions?|full game|game)\b/.test(p)) {
+  if (
+    /\b(map|world|city|town|island|tycoon|lobby|arena|plot|base|kingdom|village|open[-\s]?world|gta|grand theft|crime|wanted|vehicles?|cars?|garage|missions?|full game|game)\b/.test(
+      p,
+    )
+  ) {
     return getProceduralMapFallback(p);
   }
 
   // Generic build we can't template — still return a clear, non-empty message
-  // and a starter folder so the user always sees a result and a next step.
+  // and a playable vertical slice so the user never receives an empty folder.
+  return getUniversalPlayableFallback(prompt);
+}
+
+function getUniversalPlayableFallback(prompt: string): {
+  message: string;
+  files: GenFile[];
+  actions: GenAction[];
+} {
+  const v3 = (x: number, y: number, z: number) => ({ __t: "Vector3", x, y, z });
+  const color = (r: number, g: number, b: number) => ({ __t: "Color3", r, g, b });
+  const udim2 = (xs: number, xo: number, ys: number, yo: number) => ({
+    __t: "UDim2",
+    xs,
+    xo,
+    ys,
+    yo,
+  });
+  const enumValue = (enumName: string, value: string) => ({
+    __t: "Enum",
+    enum: enumName,
+    value,
+  });
+
   return {
     message:
-      "I couldn't fully generate that in one pass, so I queued a starter folder for it. Tell me one concrete piece to add next (e.g. 'a Play button', 'a coin counter', 'a spawn pad') and I'll build it out.",
-    files: [],
+      "Queued a real playable fallback instead of an empty folder: Workspace/BloxSmithPlayableFeature, ReplicatedStorage/Remotes, ServerScriptService/Systems, and StarterGui/PlayableFeatureUI.",
+    files: [
+      {
+        path: "ServerScriptService/Systems/BloxSmithPlayableFeature.server.lua",
+        file_type: "Script",
+        service_location: "ServerScriptService/Systems",
+        content: `local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local remotes = ReplicatedStorage:WaitForChild("Remotes")
+local featureRemote = remotes:WaitForChild("BloxSmithPlayableFeature")
+local cooldowns = {}
+
+local function ensureStats(player)
+\tlocal leaderstats = player:FindFirstChild("leaderstats")
+\tif not leaderstats then
+\t\tleaderstats = Instance.new("Folder")
+\t\tleaderstats.Name = "leaderstats"
+\t\tleaderstats.Parent = player
+\tend
+
+\tlocal uses = leaderstats:FindFirstChild("FeatureUses")
+\tif not uses then
+\t\tuses = Instance.new("IntValue")
+\t\tuses.Name = "FeatureUses"
+\t\tuses.Value = 0
+\t\tuses.Parent = leaderstats
+\tend
+\treturn uses
+end
+
+local function activate(player)
+\tlocal now = os.clock()
+\tif cooldowns[player] and now - cooldowns[player] < 1 then return end
+\tcooldowns[player] = now
+\tlocal uses = ensureStats(player)
+\tuses.Value += 1
+\tfeatureRemote:FireClient(player, uses.Value)
+end
+
+Players.PlayerAdded:Connect(ensureStats)
+Players.PlayerRemoving:Connect(function(player)
+\tcooldowns[player] = nil
+end)
+
+featureRemote.OnServerEvent:Connect(function(player, action)
+\tif action ~= "activate" then return end
+\tactivate(player)
+end)
+
+local feature = workspace:WaitForChild("BloxSmithPlayableFeature", 10)
+local pad = feature and feature:FindFirstChild("ActionPad")
+if pad and pad:IsA("BasePart") then
+\tlocal prompt = pad:FindFirstChildOfClass("ProximityPrompt") or Instance.new("ProximityPrompt")
+\tprompt.ActionText = "Activate"
+\tprompt.ObjectText = "BloxSmith Feature"
+\tprompt.HoldDuration = 0.2
+\tprompt.MaxActivationDistance = 12
+\tprompt.Parent = pad
+\tprompt.Triggered:Connect(activate)
+end
+`,
+      },
+      {
+        path: "StarterGui/PlayableFeatureUI/PlayableFeature.client.lua",
+        file_type: "LocalScript",
+        service_location: "StarterGui/PlayableFeatureUI",
+        content: `local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+
+local gui = script.Parent
+gui.ResetOnSpawn = false
+gui.IgnoreGuiInset = true
+
+local root = gui:WaitForChild("Root")
+local button = root:WaitForChild("UseButton")
+local counter = root:WaitForChild("Counter")
+local toast = root:WaitForChild("Toast")
+local remote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("BloxSmithPlayableFeature")
+
+local baseSize = root.Size
+root.Size = UDim2.new(baseSize.X.Scale, baseSize.X.Offset - 18, baseSize.Y.Scale, baseSize.Y.Offset - 18)
+root.BackgroundTransparency = 1
+TweenService:Create(root, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+\tSize = baseSize,
+\tBackgroundTransparency = 0.08,
+}):Play()
+
+local buttonBase = button.Size
+local function tweenButton(sizeOffset, color)
+\tTweenService:Create(button, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+\t\tSize = UDim2.new(buttonBase.X.Scale, buttonBase.X.Offset + sizeOffset, buttonBase.Y.Scale, buttonBase.Y.Offset + math.floor(sizeOffset / 2)),
+\t\tBackgroundColor3 = color,
+\t}):Play()
+end
+
+button.MouseEnter:Connect(function()
+\ttweenButton(8, Color3.fromRGB(110, 190, 255))
+end)
+button.MouseLeave:Connect(function()
+\ttweenButton(0, Color3.fromRGB(80, 155, 255))
+end)
+button.MouseButton1Down:Connect(function()
+\ttweenButton(-6, Color3.fromRGB(55, 120, 220))
+end)
+button.MouseButton1Up:Connect(function()
+\ttweenButton(8, Color3.fromRGB(110, 190, 255))
+end)
+button.Activated:Connect(function()
+\tremote:FireServer("activate")
+end)
+
+remote.OnClientEvent:Connect(function(uses)
+\tcounter.Text = "Uses: " .. tostring(uses)
+\ttoast.Text = "Activated"
+\ttoast.Visible = true
+\ttoast.TextTransparency = 0
+\tTweenService:Create(toast, TweenInfo.new(0.25), { Position = UDim2.fromScale(0.5, 1.12) }):Play()
+\ttask.delay(1.1, function()
+\t\tTweenService:Create(toast, TweenInfo.new(0.3), { TextTransparency = 1 }):Play()
+\tend)
+end)
+`,
+      },
+    ],
     actions: [
+      { type: "create", className: "Folder", name: "Systems", parent: "ServerScriptService" },
+      { type: "create", className: "Folder", name: "Remotes", parent: "ReplicatedStorage" },
       {
         type: "create",
-        className: "Folder",
-        name: "BloxsmithBuild",
-        parent: "Workspace/GeneratedAssets",
+        className: "RemoteEvent",
+        name: "BloxSmithPlayableFeature",
+        parent: "ReplicatedStorage/Remotes",
+      },
+      {
+        type: "create",
+        className: "Model",
+        name: "BloxSmithPlayableFeature",
+        parent: "Workspace",
         properties: {},
       },
+      {
+        type: "create",
+        className: "Part",
+        name: "Ground",
+        parent: "Workspace/BloxSmithPlayableFeature",
+        properties: {
+          Size: v3(70, 2, 70),
+          Position: v3(0, 0, 0),
+          Anchored: true,
+          Material: enumValue("Material", "Grass"),
+          Color: color(72, 145, 88),
+        },
+      },
+      {
+        type: "create",
+        className: "SpawnLocation",
+        name: "FeatureSpawn",
+        parent: "Workspace/BloxSmithPlayableFeature",
+        properties: {
+          Size: v3(12, 1, 12),
+          Position: v3(0, 3, 18),
+          Anchored: true,
+          Neutral: true,
+          Material: enumValue("Material", "Neon"),
+          Color: color(80, 155, 255),
+        },
+      },
+      {
+        type: "create",
+        className: "Part",
+        name: "ActionPad",
+        parent: "Workspace/BloxSmithPlayableFeature",
+        properties: {
+          Size: v3(10, 1, 10),
+          Position: v3(0, 2, -10),
+          Anchored: true,
+          Material: enumValue("Material", "Neon"),
+          Color: color(255, 205, 90),
+        },
+        children: [
+          {
+            className: "ProximityPrompt",
+            name: "ActivatePrompt",
+            properties: {
+              ActionText: "Activate",
+              ObjectText: "BloxSmith Feature",
+              HoldDuration: 0.2,
+              MaxActivationDistance: 12,
+            },
+          },
+          {
+            className: "PointLight",
+            name: "PadGlow",
+            properties: { Brightness: 2, Range: 22, Color: color(255, 205, 90) },
+          },
+        ],
+      },
+      {
+        type: "create",
+        className: "Part",
+        name: "ThemeBeacon",
+        parent: "Workspace/BloxSmithPlayableFeature",
+        properties: {
+          Size: v3(5, 18, 5),
+          Position: v3(0, 10, -24),
+          Anchored: true,
+          Material: enumValue("Material", "Glass"),
+          Color: color(90, 170, 255),
+          Transparency: 0.25,
+        },
+        children: [
+          {
+            className: "PointLight",
+            name: "BeaconGlow",
+            properties: { Brightness: 3, Range: 42, Color: color(90, 170, 255) },
+          },
+        ],
+      },
+      {
+        type: "create",
+        className: "ScreenGui",
+        name: "PlayableFeatureUI",
+        parent: "StarterGui",
+        properties: {
+          ResetOnSpawn: false,
+          IgnoreGuiInset: true,
+          ZIndexBehavior: enumValue("ZIndexBehavior", "Sibling"),
+        },
+      },
+      {
+        type: "create",
+        className: "Frame",
+        name: "Root",
+        parent: "StarterGui/PlayableFeatureUI",
+        properties: {
+          AnchorPoint: { __t: "Vector2", x: 0.5, y: 1 },
+          Position: udim2(0.5, 0, 1, -24),
+          Size: udim2(0.86, 0, 0, 132),
+          BackgroundColor3: color(16, 18, 28),
+          BackgroundTransparency: 0.08,
+        },
+        children: [
+          {
+            className: "UICorner",
+            name: "Corner",
+            properties: { CornerRadius: { __t: "UDim", s: 0, o: 16 } },
+          },
+          {
+            className: "UIStroke",
+            name: "Stroke",
+            properties: { Thickness: 1.5, Transparency: 0.35, Color: color(90, 170, 255) },
+          },
+          { className: "UIGradient", name: "Gradient", properties: { Rotation: 90 } },
+          {
+            className: "UIPadding",
+            name: "Padding",
+            properties: {
+              PaddingTop: { __t: "UDim", s: 0, o: 12 },
+              PaddingBottom: { __t: "UDim", s: 0, o: 12 },
+              PaddingLeft: { __t: "UDim", s: 0, o: 14 },
+              PaddingRight: { __t: "UDim", s: 0, o: 14 },
+            },
+          },
+          {
+            className: "TextLabel",
+            name: "Title",
+            properties: {
+              Size: udim2(1, 0, 0, 26),
+              BackgroundTransparency: 1,
+              Text: "BloxSmith Feature",
+              Font: enumValue("Font", "GothamBold"),
+              TextColor3: color(255, 255, 255),
+              TextScaled: true,
+            },
+          },
+          {
+            className: "TextLabel",
+            name: "Counter",
+            properties: {
+              Position: udim2(0, 0, 0, 34),
+              Size: udim2(1, 0, 0, 22),
+              BackgroundTransparency: 1,
+              Text: "Uses: 0",
+              Font: enumValue("Font", "Gotham"),
+              TextColor3: color(210, 225, 245),
+              TextScaled: true,
+            },
+          },
+          {
+            className: "TextButton",
+            name: "UseButton",
+            properties: {
+              AnchorPoint: { __t: "Vector2", x: 0.5, y: 0 },
+              Position: udim2(0.5, 0, 0, 66),
+              Size: udim2(0.62, 0, 0, 44),
+              BackgroundColor3: color(80, 155, 255),
+              Text: "Activate",
+              Font: enumValue("Font", "GothamBold"),
+              TextColor3: color(255, 255, 255),
+              TextScaled: true,
+            },
+            children: [
+              {
+                className: "UICorner",
+                name: "Corner",
+                properties: { CornerRadius: { __t: "UDim", s: 0, o: 10 } },
+              },
+              {
+                className: "UIStroke",
+                name: "Stroke",
+                properties: { Thickness: 1, Transparency: 0.5, Color: color(255, 255, 255) },
+              },
+            ],
+          },
+          {
+            className: "TextLabel",
+            name: "Toast",
+            properties: {
+              AnchorPoint: { __t: "Vector2", x: 0.5, y: 1 },
+              Position: udim2(0.5, 0, 1, 8),
+              Size: udim2(0.42, 0, 0, 24),
+              BackgroundTransparency: 1,
+              Text: "",
+              Visible: false,
+              Font: enumValue("Font", "GothamBold"),
+              TextColor3: color(255, 225, 120),
+              TextScaled: true,
+            },
+          },
+        ],
+      },
+      {
+        type: "lighting",
+        properties: {
+          ClockTime: 14.5,
+          Brightness: 2.2,
+          Ambient: color(90, 95, 110),
+          OutdoorAmbient: color(145, 155, 165),
+        },
+      },
+      { type: "select", path: "Workspace.BloxSmithPlayableFeature" },
     ],
   };
 }
@@ -656,8 +1015,22 @@ function getProceduralCityFallback(p: string): {
   }
 
   // Police precinct — real content so the "Police" folder is never empty.
-  part("Workspace/Map/Police", "PoliceStation", [50, 34, 40], [270, 17, -45], "Concrete", [62, 92, 142]);
-  part("Workspace/Map/Police", "PoliceStationSign", [50, 6, 3], [270, 37, -23], "Neon", [80, 150, 255]);
+  part(
+    "Workspace/Map/Police",
+    "PoliceStation",
+    [50, 34, 40],
+    [270, 17, -45],
+    "Concrete",
+    [62, 92, 142],
+  );
+  part(
+    "Workspace/Map/Police",
+    "PoliceStationSign",
+    [50, 6, 3],
+    [270, 37, -23],
+    "Neon",
+    [80, 150, 255],
+  );
   part("Workspace/Map/Police", "PatrolCruiser", [12, 4, 20], [270, 3, 4], "Metal", [35, 60, 120]);
 
   actions.push({
@@ -750,7 +1123,8 @@ function getProceduralMapFallback(p: string): {
   const isCity =
     /\b(open[-\s]?world|city|downtown|miami|vice city|beach|streets?|police|wanted|garage|apartment|roleplay|rp|gta|grand theft|crime|criminal|cars?|vehicles?|missions?|jobs?)\b/.test(
       p,
-    ) && /\b(map|game|world|city|streets?|missions?|jobs?|open[-\s]?world|gta|grand theft)\b/.test(p);
+    ) &&
+    /\b(map|game|world|city|streets?|missions?|jobs?|open[-\s]?world|gta|grand theft)\b/.test(p);
   if (isCity) return getProceduralCityFallback(p);
 
   // IMPORTANT: the old fallback used four generic "Plot" pads for every map request.
@@ -758,9 +1132,10 @@ function getProceduralMapFallback(p: string): {
   // exactly the broken screenshot users kept seeing. Plot pads now ONLY appear when
   // the prompt is explicitly tycoon-related. Every other map gets a real open-world
   // starter layout with districts, roads, landmarks, nature, spawns, and missions.
-  const isTycoon = /\b(tycoon|dropper|conveyor|rebirth|purchase\s*pads?|claim\s*plots?|plot\s*claiming|owner\s*plot)\b/.test(
-    p,
-  );
+  const isTycoon =
+    /\b(tycoon|dropper|conveyor|rebirth|purchase\s*pads?|claim\s*plots?|plot\s*claiming|owner\s*plot)\b/.test(
+      p,
+    );
   if (!isTycoon) return getOpenWorldMapFallback(p);
 
   const plotCount = 6;
@@ -930,8 +1305,7 @@ function getProceduralMapFallback(p: string): {
   actions.push({ type: "select", path: "Workspace.Map.TycoonPlots" });
 
   return {
-    message:
-      `Queued a clean tycoon-only map with ${plotCount} claim plots, a premium central hub, spawn, terrain, and organized folders. Plot pads are now only used for tycoon prompts.`,
+    message: `Queued a clean tycoon-only map with ${plotCount} claim plots, a premium central hub, spawn, terrain, and organized folders. Plot pads are now only used for tycoon prompts.`,
     files: [],
     actions,
   };
@@ -1015,20 +1389,90 @@ function getOpenWorldMapFallback(p: string): {
   actions.push({ type: "set", path: "Workspace.Terrain", properties: { Decoration: true } });
 
   // District foundations so the player sees useful, intentional zones immediately.
-  part("Workspace/Map/OpenWorld/TerrainZones", "DowntownFoundation", [360, 1, 280], [0, 0.1, -110], "Concrete", [82, 86, 92]);
-  part("Workspace/Map/OpenWorld/TerrainZones", "SuburbFoundation", [300, 1, 220], [-285, 0.15, 115], "Grass", [75, 125, 70]);
-  part("Workspace/Map/OpenWorld/TerrainZones", "IndustrialFoundation", [260, 1, 210], [300, 0.15, 105], "Slate", [76, 78, 84]);
-  part("Workspace/Map/OpenWorld/TerrainZones", "BeachBoardwalk", [760, 1, 22], [0, 1.2, 278], "WoodPlanks", [170, 125, 82]);
+  part(
+    "Workspace/Map/OpenWorld/TerrainZones",
+    "DowntownFoundation",
+    [360, 1, 280],
+    [0, 0.1, -110],
+    "Concrete",
+    [82, 86, 92],
+  );
+  part(
+    "Workspace/Map/OpenWorld/TerrainZones",
+    "SuburbFoundation",
+    [300, 1, 220],
+    [-285, 0.15, 115],
+    "Grass",
+    [75, 125, 70],
+  );
+  part(
+    "Workspace/Map/OpenWorld/TerrainZones",
+    "IndustrialFoundation",
+    [260, 1, 210],
+    [300, 0.15, 105],
+    "Slate",
+    [76, 78, 84],
+  );
+  part(
+    "Workspace/Map/OpenWorld/TerrainZones",
+    "BeachBoardwalk",
+    [760, 1, 22],
+    [0, 1.2, 278],
+    "WoodPlanks",
+    [170, 125, 82],
+  );
 
   for (const x of [-260, -130, 0, 130, 260]) {
-    part("Workspace/Map/OpenWorld/Roads", `NorthSouthRoad_${x}`, [24, 0.55, 700], [x, 1.0, -35], "Asphalt", [25, 27, 30]);
-    part("Workspace/Map/OpenWorld/Sidewalks", `Sidewalk_L_${x}`, [5, 0.65, 690], [x - 18, 1.2, -35], "Concrete", [125, 125, 128]);
-    part("Workspace/Map/OpenWorld/Sidewalks", `Sidewalk_R_${x}`, [5, 0.65, 690], [x + 18, 1.2, -35], "Concrete", [125, 125, 128]);
+    part(
+      "Workspace/Map/OpenWorld/Roads",
+      `NorthSouthRoad_${x}`,
+      [24, 0.55, 700],
+      [x, 1.0, -35],
+      "Asphalt",
+      [25, 27, 30],
+    );
+    part(
+      "Workspace/Map/OpenWorld/Sidewalks",
+      `Sidewalk_L_${x}`,
+      [5, 0.65, 690],
+      [x - 18, 1.2, -35],
+      "Concrete",
+      [125, 125, 128],
+    );
+    part(
+      "Workspace/Map/OpenWorld/Sidewalks",
+      `Sidewalk_R_${x}`,
+      [5, 0.65, 690],
+      [x + 18, 1.2, -35],
+      "Concrete",
+      [125, 125, 128],
+    );
   }
   for (const z of [-285, -175, -65, 45, 155, 265]) {
-    part("Workspace/Map/OpenWorld/Roads", `EastWestRoad_${z}`, [760, 0.55, 24], [0, 1.05, z], "Asphalt", [25, 27, 30]);
-    part("Workspace/Map/OpenWorld/Sidewalks", `Sidewalk_N_${z}`, [750, 0.65, 5], [0, 1.2, z - 18], "Concrete", [125, 125, 128]);
-    part("Workspace/Map/OpenWorld/Sidewalks", `Sidewalk_S_${z}`, [750, 0.65, 5], [0, 1.2, z + 18], "Concrete", [125, 125, 128]);
+    part(
+      "Workspace/Map/OpenWorld/Roads",
+      `EastWestRoad_${z}`,
+      [760, 0.55, 24],
+      [0, 1.05, z],
+      "Asphalt",
+      [25, 27, 30],
+    );
+    part(
+      "Workspace/Map/OpenWorld/Sidewalks",
+      `Sidewalk_N_${z}`,
+      [750, 0.65, 5],
+      [0, 1.2, z - 18],
+      "Concrete",
+      [125, 125, 128],
+    );
+    part(
+      "Workspace/Map/OpenWorld/Sidewalks",
+      `Sidewalk_S_${z}`,
+      [750, 0.65, 5],
+      [0, 1.2, z + 18],
+      "Concrete",
+      [125, 125, 128],
+    );
   }
 
   // Major landmarks and buildings.
@@ -1046,9 +1490,31 @@ function getOpenWorldMapFallback(p: string): {
   ] as const;
 
   for (const [name, x, z, width, height, depth, rgb] of buildings) {
-    part("Workspace/Map/OpenWorld/Buildings", name, [width, height, depth], [x, height / 2 + 1, z], "SmoothPlastic", rgb);
-    part("Workspace/Map/OpenWorld/Buildings", `${name}_RoofTrim`, [width + 4, 2, depth + 4], [x, height + 2.5, z], "Neon", [90, 170, 255]);
-    part("Workspace/Map/OpenWorld/Buildings", `${name}_FrontWindows`, [width * 0.72, height * 0.55, 0.8], [x, height * 0.58, z - depth / 2 - 0.6], "Glass", [130, 210, 255], { Transparency: 0.35 });
+    part(
+      "Workspace/Map/OpenWorld/Buildings",
+      name,
+      [width, height, depth],
+      [x, height / 2 + 1, z],
+      "SmoothPlastic",
+      rgb,
+    );
+    part(
+      "Workspace/Map/OpenWorld/Buildings",
+      `${name}_RoofTrim`,
+      [width + 4, 2, depth + 4],
+      [x, height + 2.5, z],
+      "Neon",
+      [90, 170, 255],
+    );
+    part(
+      "Workspace/Map/OpenWorld/Buildings",
+      `${name}_FrontWindows`,
+      [width * 0.72, height * 0.55, 0.8],
+      [x, height * 0.58, z - depth / 2 - 0.6],
+      "Glass",
+      [130, 210, 255],
+      { Transparency: 0.35 },
+    );
   }
 
   for (const [name, x, z, rgb] of [
@@ -1057,9 +1523,17 @@ function getOpenWorldMapFallback(p: string): {
     ["RadioTower", 335, -305, [120, 120, 130]],
     ["MissionPlaza", 0, -25, [115, 118, 128]],
   ] as const) {
-    const size: [number, number, number] = name === "RadioTower" ? [16, 90, 16] : name === "BeachPier" ? [36, 2, 130] : [72, 8, 72];
+    const size: [number, number, number] =
+      name === "RadioTower" ? [16, 90, 16] : name === "BeachPier" ? [36, 2, 130] : [72, 8, 72];
     const pos: [number, number, number] = name === "RadioTower" ? [x, 46, z] : [x, 3, z];
-    part("Workspace/Map/OpenWorld/Landmarks", name, size, pos, name === "RadioTower" ? "Metal" : "WoodPlanks", rgb);
+    part(
+      "Workspace/Map/OpenWorld/Landmarks",
+      name,
+      size,
+      pos,
+      name === "RadioTower" ? "Metal" : "WoodPlanks",
+      rgb,
+    );
   }
 
   // Suburbs with real house shapes, not empty squares.
@@ -1074,26 +1548,79 @@ function getOpenWorldMapFallback(p: string): {
     [-285, 210],
   ] as const;
   homePositions.forEach(([x, z], i) => {
-    const baseColor: readonly [number, number, number] = i % 2 === 0 ? [210, 165, 120] : [145, 190, 220];
-    part("Workspace/Map/OpenWorld/Homes", `SuburbanHome_${i + 1}`, [42, 24, 36], [x, 13, z], "WoodPlanks", baseColor);
-    part("Workspace/Map/OpenWorld/Homes", `SuburbanHome_${i + 1}_Roof`, [48, 8, 42], [x, 31, z], "Slate", [75, 70, 72]);
-    part("Workspace/Map/OpenWorld/Homes", `SuburbanHome_${i + 1}_Door`, [8, 12, 1], [x, 7, z - 18.6], "Wood", [95, 55, 35]);
+    const baseColor: readonly [number, number, number] =
+      i % 2 === 0 ? [210, 165, 120] : [145, 190, 220];
+    part(
+      "Workspace/Map/OpenWorld/Homes",
+      `SuburbanHome_${i + 1}`,
+      [42, 24, 36],
+      [x, 13, z],
+      "WoodPlanks",
+      baseColor,
+    );
+    part(
+      "Workspace/Map/OpenWorld/Homes",
+      `SuburbanHome_${i + 1}_Roof`,
+      [48, 8, 42],
+      [x, 31, z],
+      "Slate",
+      [75, 70, 72],
+    );
+    part(
+      "Workspace/Map/OpenWorld/Homes",
+      `SuburbanHome_${i + 1}_Door`,
+      [8, 12, 1],
+      [x, 7, z - 18.6],
+      "Wood",
+      [95, 55, 35],
+    );
   });
 
   // Trees, palms, and rocks to make the world feel alive.
   const treePositions = [
-    [-390, -330], [-345, -285], [-290, -330], [-245, -270], [-380, -210], [-310, -205],
-    [-390, 300], [-310, 310], [-230, 305], [220, 310], [300, 315], [380, 300],
-    [315, 30], [365, 85], [315, 165], [370, 215], [-130, 295], [130, 295],
+    [-390, -330],
+    [-345, -285],
+    [-290, -330],
+    [-245, -270],
+    [-380, -210],
+    [-310, -205],
+    [-390, 300],
+    [-310, 310],
+    [-230, 305],
+    [220, 310],
+    [300, 315],
+    [380, 300],
+    [315, 30],
+    [365, 85],
+    [315, 165],
+    [370, 215],
+    [-130, 295],
+    [130, 295],
   ] as const;
   treePositions.forEach(([x, z], i) => {
     const isPalm = z > 260;
-    part("Workspace/Map/OpenWorld/Nature", `${isPalm ? "Palm" : "Tree"}_${i + 1}_Trunk`, [4, isPalm ? 22 : 14, 4], [x, isPalm ? 12 : 8, z], "Wood", [105, 70, 38], {
-      Shape: { __t: "Enum", enum: "PartType", value: "Cylinder" },
-    });
-    part("Workspace/Map/OpenWorld/Nature", `${isPalm ? "Palm" : "Tree"}_${i + 1}_Leaves`, [isPalm ? 26 : 18, isPalm ? 8 : 18, isPalm ? 26 : 18], [x, isPalm ? 25 : 18, z], "Grass", [35, 125, 55], {
-      Shape: { __t: "Enum", enum: "PartType", value: "Ball" },
-    });
+    part(
+      "Workspace/Map/OpenWorld/Nature",
+      `${isPalm ? "Palm" : "Tree"}_${i + 1}_Trunk`,
+      [4, isPalm ? 22 : 14, 4],
+      [x, isPalm ? 12 : 8, z],
+      "Wood",
+      [105, 70, 38],
+      {
+        Shape: { __t: "Enum", enum: "PartType", value: "Cylinder" },
+      },
+    );
+    part(
+      "Workspace/Map/OpenWorld/Nature",
+      `${isPalm ? "Palm" : "Tree"}_${i + 1}_Leaves`,
+      [isPalm ? 26 : 18, isPalm ? 8 : 18, isPalm ? 26 : 18],
+      [x, isPalm ? 25 : 18, z],
+      "Grass",
+      [35, 125, 55],
+      {
+        Shape: { __t: "Enum", enum: "PartType", value: "Ball" },
+      },
+    );
   });
 
   for (const [name, x, z, rgb] of [
@@ -1104,7 +1631,15 @@ function getOpenWorldMapFallback(p: string): {
     ["BeachBuggy", 30, 250, [255, 135, 70]],
   ] as const) {
     part("Workspace/Map/OpenWorld/Vehicles", name, [12, 4, 20], [x, 4, z], "Metal", rgb);
-    part("Workspace/Map/OpenWorld/Vehicles", `${name}_Cab`, [8, 4, 8], [x, 8, z - 2], "Glass", [120, 210, 255], { Transparency: 0.25 });
+    part(
+      "Workspace/Map/OpenWorld/Vehicles",
+      `${name}_Cab`,
+      [8, 4, 8],
+      [x, 8, z - 2],
+      "Glass",
+      [120, 210, 255],
+      { Transparency: 0.25 },
+    );
   }
 
   const markers = [
@@ -1132,7 +1667,11 @@ function getOpenWorldMapFallback(p: string): {
         {
           className: "BillboardGui",
           name: "Label",
-          properties: { Size: { __t: "UDim2", xs: 0, xo: 180, ys: 0, yo: 44 }, StudsOffset: v3(0, 8, 0), AlwaysOnTop: true },
+          properties: {
+            Size: { __t: "UDim2", xs: 0, xo: 180, ys: 0, yo: 44 },
+            StudsOffset: v3(0, 8, 0),
+            AlwaysOnTop: true,
+          },
           children: [
             {
               className: "TextLabel",
@@ -1182,7 +1721,12 @@ function getOpenWorldMapFallback(p: string): {
     className: "Atmosphere",
     name: "OpenWorldAtmosphere",
     parent: "Lighting",
-    properties: { Density: 0.28, Offset: 0.15, Color: color(255, 210, 180), Decay: color(90, 110, 145) },
+    properties: {
+      Density: 0.28,
+      Offset: 0.15,
+      Color: color(255, 210, 180),
+      Decay: color(90, 110, 145),
+    },
   });
   actions.push({
     type: "create",
@@ -2882,7 +3426,9 @@ Rules:
           // chain-of-thought inline. Strip it so the user never sees raw
           // "We need to rewrite the prompt…" text — and if all we got back was
           // reasoning, keep the user's original prompt untouched (and refund).
-          let cleaned = stripModelReasoning(text).replace(/^["']|["']$/g, "").trim();
+          let cleaned = stripModelReasoning(text)
+            .replace(/^["']|["']$/g, "")
+            .trim();
           if (cleaned.includes("\n")) {
             const lines = cleaned
               .split("\n")
@@ -3011,7 +3557,9 @@ Rules:
             durationMs: Date.now() - started,
             userId,
           });
-          const cleaned = stripModelReasoning(text).replace(/^["']|["']$/g, "").trim();
+          const cleaned = stripModelReasoning(text)
+            .replace(/^["']|["']$/g, "")
+            .trim();
           if (!cleaned || looksLikeModelReasoning(cleaned)) {
             if (!isOwner) {
               try {
