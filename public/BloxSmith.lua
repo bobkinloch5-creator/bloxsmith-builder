@@ -1316,6 +1316,19 @@ local function normalizePersistentParent(a)
 				end
 			end
 		end
+		-- Self-nest guard: if we just reparented a container into a folder with
+		-- the SAME name as the container we're creating (e.g. create Folder "Map"
+		-- → parent "Workspace/Map"), drop the duplicate tail. Otherwise the plugin
+		-- builds Workspace.Map.Map and leaves an empty nested folder behind.
+		if (className == "Folder" or className == "Model") and name ~= "" then
+			local p = string.gsub(tostring(a.parent or ""), "/", ".")
+			local segs = string.split(p, ".")
+			if #segs > 0 and segs[#segs] == name then
+				table.remove(segs, #segs)
+				a.parent = table.concat(segs, "/")
+				if a.parent == "" then a.parent = "Workspace" end
+			end
+		end
 		return
 	end
 
@@ -2038,6 +2051,27 @@ end
 function Actions.select(a)
 	local inst = resolvePath(a.path, false)
 	if inst then Selection:Set({ inst }) end
+	return true
+end
+
+-- 'playtest_ready' is queued by the Playtest "apply fix" flow as the final
+-- framing step. It is NOT a build mutation — it just focuses the fixed area and
+-- surfaces the checklist in the log. Without this handler it fell through to the
+-- "unknown action" path and was reported as a failure at the end of every
+-- otherwise-successful Playtest fix.
+function Actions.playtest_ready(a)
+	if a.focus then
+		local ok, inst = pcall(resolvePath, a.focus, false)
+		if ok and inst then
+			pcall(function() Selection:Set({ inst }) end)
+		end
+	end
+	if a.note then appendLog(tostring(a.note)) end
+	if type(a.checklist) == "table" then
+		for _, item in ipairs(a.checklist) do
+			appendLog("  - " .. tostring(item))
+		end
+	end
 	return true
 end
 
