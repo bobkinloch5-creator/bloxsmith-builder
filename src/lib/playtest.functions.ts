@@ -266,7 +266,9 @@ export const getPlaytestRun = createServerFn({ method: "POST" })
         .in("id", ids);
       total = acts?.length ?? 0;
       applied = (acts ?? []).filter((a: any) => a.status === "executed").length;
-      failed = (acts ?? []).filter((a: any) => a.status === "error").length;
+      failed = (acts ?? []).filter(
+        (a: any) => a.status === "failed" || a.status === "error",
+      ).length;
     }
     return { run, progress: { applied, total, failed } };
   });

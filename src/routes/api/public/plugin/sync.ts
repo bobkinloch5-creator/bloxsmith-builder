@@ -42,6 +42,10 @@ export const Route = createFileRoute("/api/public/plugin/sync")({
         const body = await request.json().catch(() => ({}));
         const projectId = body?.projectId;
         const manual = body?.manual === true;
+        const requestedLimit = Number(body?.limit);
+        const actionLimit = Number.isFinite(requestedLimit)
+          ? Math.max(1, Math.min(50, Math.floor(requestedLimit)))
+          : 35;
         if (!projectId)
           return new Response(JSON.stringify({ error: "missing projectId" }), {
             status: 400,
@@ -64,7 +68,9 @@ export const Route = createFileRoute("/api/public/plugin/sync")({
         const manualOnly = ownerProfile?.manual_sync_only === true;
         const shouldDeliver = manual || !manualOnly;
 
-        // Pull pending actions (queued by the AI) — cap to 200 per pull
+        // Pull pending actions (queued by the AI) in small batches so Studio can
+        // apply, yield, and report progress during large builds instead of
+        // looking frozen on one oversized payload.
         const { data: pending } = shouldDeliver
           ? await supabaseAdmin
               .from("plugin_actions")
@@ -72,7 +78,7 @@ export const Route = createFileRoute("/api/public/plugin/sync")({
               .eq("project_id", projectId)
               .eq("status", "pending")
               .order("created_at", { ascending: true })
-              .limit(200)
+              .limit(actionLimit)
           : {
               data: [] as Array<{
                 id: string;

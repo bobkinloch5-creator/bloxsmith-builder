@@ -28,10 +28,16 @@ local Terrain               = Workspace.Terrain
 local DEFAULT_API   = "https://bloxsmith.pro/api/public/plugin"
 local POLL_SECONDS  = 0.2
 local CTX_SECONDS   = 15  -- how often we re-send workspace context to the AI
-local SCAN_TIMEOUT_SECONDS = 15
+local SCAN_TIMEOUT_SECONDS = 30
+local SYNC_ACTION_LIMIT = 35
+local APPLY_YIELD_EVERY = 6
+local REPORT_FLUSH_EVERY = 8
+local LIVE_FOCUS_EVERY = 10
 local pushSnapshot
+local scheduleSnapshot
 local showScriptPromptDialog
 local instancePath
+local focusOn
 local scanInProgress = false
 local scanCancelRequested = false
 local connected = false
@@ -113,6 +119,21 @@ local function pathIsIgnored(path)
 		if string.find(lower, pat, 1, true) then return true end
 	end
 	return false
+end
+
+do
+	local snapshotToken = 0
+	function scheduleSnapshot(delaySeconds)
+		if not activeProjectId then return end
+		snapshotToken += 1
+		local token = snapshotToken
+		task.delay(delaySeconds or 4, function()
+			if token ~= snapshotToken then return end
+			if connected and pushSnapshot then
+				pcall(pushSnapshot)
+			end
+		end)
+	end
 end
 
 local function postJSON(path, body)
@@ -1318,7 +1339,7 @@ local function normalizePersistentParent(a)
 		end
 		-- Self-nest guard: if we just reparented a container into a folder with
 		-- the SAME name as the container we're creating (e.g. create Folder "Map"
-		-- → parent "Workspace/Map"), drop the duplicate tail. Otherwise the plugin
+		-- -> parent "Workspace/Map"), drop the duplicate tail. Otherwise the plugin
 		-- builds Workspace.Map.Map and leaves an empty nested folder behind.
 		if (className == "Folder" or className == "Model") and name ~= "" then
 			local p = string.gsub(tostring(a.parent or ""), "/", ".")
@@ -1408,7 +1429,7 @@ end
 local function isWorldBuildAction(a)
 	if not a then return false end
 	local t = a.type
-	if t == "terrainFill" or t == "terrainGenerate" or t == "spawn" or t == "insertAsset" or t == "insert_toolbox_asset" then return true end
+	if t == "terrainFill" or t == "terrainGenerate" or t == "spawn" or t == "insertAsset" or t == "insert_toolbox_asset" or t == "repairPlacement" then return true end
 	local descriptor = table.concat({ tostring(t or ""), tostring(a.className or ""), tostring(a.name or ""), tostring(a.parent or "") }, " ")
 	return pathHas(descriptor, { "workspace", "map", "city", "world", "terrain", "grass", "ground", "road", "building", "tree", "npc", "prop", "zone" })
 end
@@ -1698,6 +1719,46 @@ local function packGrid(items)
 	return cells, packW, packD
 end
 
+local REGION_BASES = {
+	roads = { x = 0, z = 0 },
+	buildings = { x = -190, z = -170 },
+	shops = { x = 175, z = -170 },
+	vehicles = { x = 0, z = 95 },
+	npcs = { x = 0, z = 150 },
+	nature = { x = -190, z = 150 },
+	props = { x = 185, z = 115 },
+	interactables = { x = 0, z = -235 },
+	waterfront = { x = -20, z = 285 },
+	tools = { x = 240, z = 250 },
+	generated = { x = 0, z = 335 },
+}
+
+local function classifyRegion(parent)
+	local name = lower(parent and fullName(parent) or "")
+	if pathContainsAny(name, { "road", "street", "sidewalk", "intersection", "bridge" }) then return "roads" end
+	if pathContainsAny(name, { "shop", "store", "mall", "market", "commercial", "restaurant", "cafe" }) then return "shops" end
+	if pathContainsAny(name, { "vehicle", "car", "garage", "parking", "truck", "bus", "bike" }) then return "vehicles" end
+	if pathContainsAny(name, { "npc", "character", "citizen", "pedestrian", "vendor", "police", "enemy", "mob" }) then return "npcs" end
+	if pathContainsAny(name, { "tree", "park", "nature", "grass", "bush", "rock", "forest", "garden" }) then return "nature" end
+	if pathContainsAny(name, { "prop", "decor", "light", "lamp", "sign", "bench", "trash", "furniture" }) then return "props" end
+	if pathContainsAny(name, { "interactable", "mission", "quest", "job", "pickup", "zone", "door", "button" }) then return "interactables" end
+	if pathContainsAny(name, { "beach", "water", "dock", "pier", "ocean", "river", "lake" }) then return "waterfront" end
+	if pathContainsAny(name, { "tool", "weapon", "starterpack" }) then return "tools" end
+	if pathContainsAny(name, { "building", "house", "apartment", "tower", "office", "skyscraper", "landmark" }) then return "buildings" end
+	return "generated"
+end
+
+local function regionOrigin(parent, usedRegions)
+	local region = classifyRegion(parent)
+	local base = REGION_BASES[region] or REGION_BASES.generated
+	local used = usedRegions[region] or 0
+	usedRegions[region] = used + 1
+	local col = used % 2
+	local row = math.floor(used / 2)
+	local spacing = MAX_ROW_WIDTH + GROUP_GAP + 24
+	return base.x + (col * spacing), base.z + (row * spacing), region
+end
+
 -- Lay out one parent's worth of freshly inserted assets at a given world origin.
 function BloxPlacement.layoutGroup(parent, instances, originX, originZ, ignoreList)
 	local items = {}
@@ -1752,28 +1813,55 @@ function BloxPlacement.arrange(taggedInstances)
 		end
 	end
 
-	-- Tile groups along Z so Buildings / Roads / Vehicles occupy distinct bands.
-	local cursorZ = 0
+	-- Place groups into semantic city/map regions so roads, buildings, vehicles,
+	-- NPCs, nature, props, and interactables become a clean playable layout
+	-- instead of one long strip or a pile at the origin.
+	local usedRegions = {}
 	for _, parent in ipairs(order) do
-		local _, packD = BloxPlacement.layoutGroup(parent, byParent[parent], 0, cursorZ, ignore)
-		cursorZ = cursorZ + packD + GROUP_GAP
+		local originX, originZ = regionOrigin(parent, usedRegions)
+		BloxPlacement.layoutGroup(parent, byParent[parent], originX, originZ, ignore)
 	end
 end
 end
 
 function Actions.script(a)
+	if a.path and (not a.parent or not a.name) then
+		local parts = string.split(tostring(a.path):gsub("%.", "/"), "/")
+		if not a.name then a.name = parts[#parts] end
+		if not a.parent and not a.service_location and #parts > 1 then
+			a.parent = table.concat(parts, "/", 1, #parts - 1)
+		end
+	end
 	normalizePersistentParent(a)
-	local parent = resolvePath(a.parent or a.service_location or "ServerScriptService", true)
+	local scriptParent = a.parent or a.service_location
+	local scriptName = a.name
+	if a.path and (not scriptParent or not scriptName) then
+		local parts = string.split(tostring(a.path):gsub("%.", "/"), "/")
+		if not scriptName then scriptName = parts[#parts] end
+		if not scriptParent and #parts > 1 then
+			scriptParent = table.concat(parts, "/", 1, #parts - 1)
+		end
+	end
+	local parent = resolvePath(scriptParent or "ServerScriptService", true)
 	if not parent then return false, "bad parent" end
-	local className = a.className or a.file_type or "Script"
-	local name = a.name or "Script"
+	local className = a.className or a.file_type
+	if not className then
+		local rootParts = string.split(tostring(scriptParent or ""), "/")
+		local root = rootParts[1]
+		if root == "StarterGui" or root == "StarterPlayer" or root == "ReplicatedFirst" then
+			className = "LocalScript"
+		else
+			className = "Script"
+		end
+	end
+	local name = scriptName or "Script"
 	local existing = parent:FindFirstChild(name)
 	if existing and not existing:IsA(className) then existing:Destroy(); existing = nil end
 	if not existing then
 		existing = Instance.new(className); existing.Name = name; existing.Parent = parent
 	end
 	existing.Source = a.source or a.content or ""
-	task.defer(pushSnapshot)
+	scheduleSnapshot()
 	return true, nil, existing
 end
 
@@ -1940,7 +2028,7 @@ function Actions.move(a)
 	local parent = resolvePath(a.newParent or a.parent or "Workspace", true)
 	if not parent then return false, "bad newParent" end
 	inst.Parent = parent
-	task.defer(pushSnapshot)
+	scheduleSnapshot()
 	return true
 end
 
@@ -1951,7 +2039,7 @@ function Actions.rename(a)
 	local newName = a.newName or a.name
 	if not newName or tostring(newName) == "" then return false, "missing newName" end
 	inst.Name = tostring(newName)
-	task.defer(pushSnapshot)
+	scheduleSnapshot()
 	return true
 end
 
@@ -1978,7 +2066,7 @@ function Actions.organize(a)
 			inst.Parent = container
 		end
 	end
-	task.defer(pushSnapshot)
+	scheduleSnapshot()
 	return true
 end
 
@@ -2058,25 +2146,69 @@ function Actions.select(a)
 	return true
 end
 
--- 'playtest_ready' is queued by the Playtest "apply fix" flow as the final
--- framing step. It is NOT a build mutation — it just focuses the fixed area and
--- surfaces the checklist in the log. Without this handler it fell through to the
--- "unknown action" path and was reported as a failure at the end of every
--- otherwise-successful Playtest fix.
+-- 'playtest_ready' is queued by live build/playtest flows as the final framing
+-- step. It is not a mutation; it focuses the relevant object and writes a
+-- checklist into the plugin log so the user can watch and test confidently.
 function Actions.playtest_ready(a)
 	if a.focus then
 		local ok, inst = pcall(resolvePath, a.focus, false)
 		if ok and inst then
 			pcall(function() Selection:Set({ inst }) end)
+			pcall(function() focusOn({ inst }) end)
 		end
 	end
 	if a.note then appendLog(tostring(a.note)) end
 	if type(a.checklist) == "table" then
+		appendLog("Playtest checklist:")
 		for _, item in ipairs(a.checklist) do
 			appendLog("  - " .. tostring(item))
 		end
 	end
+	syncInfo.Text = "Playtest setup ready — press Play (F5) in Studio"
 	return true
+end
+
+local function collectPlaceableForRepair(root, maxItems)
+	local out = {}
+	local limit = maxItems or 180
+	local function visit(inst)
+		if #out >= limit or not inst or not inst.Parent then return end
+		if inst:IsA("SpawnLocation") or inst.Name == "Baseplate" then return end
+		if inst:IsA("BasePart") then
+			if inst.Parent and inst.Parent:IsA("Model") then return end
+			out[#out + 1] = inst
+			return
+		end
+		if inst:IsA("Model") then
+			out[#out + 1] = inst
+			return
+		end
+		if inst:IsA("Folder") then
+			for _, child in ipairs(inst:GetChildren()) do
+				visit(child)
+				if #out >= limit then break end
+			end
+		end
+	end
+	for _, child in ipairs(root:GetChildren()) do
+		visit(child)
+		if #out >= limit then break end
+	end
+	return out
+end
+
+function Actions.repairPlacement(a)
+	local root = resolvePath(a.path or a.parent or "Workspace/Map", false)
+	if not root then root = Workspace:FindFirstChild("Map") or Workspace end
+	local items = collectPlaceableForRepair(root, tonumber(a.limit) or 180)
+	if #items == 0 then return false, "no placeable map objects found" end
+	syncInfo.Text = ("Repairing placement for %d object(s)..."):format(#items)
+	pcall(function() BloxPlacement.arrange(items) end)
+	local spawn = ensurePersistentWorldAfterInsert(items)
+	if spawn then table.insert(items, spawn) end
+	pcall(focusOn, items)
+	appendLog(("Placement repair arranged %d object(s): grounded, spaced, and checked for play."):format(#items))
+	return true, nil, root
 end
 
 -- Try multiple ways to load an asset by ID. Returns (containerModel, errorString).
@@ -2262,7 +2394,7 @@ function Actions.insert_toolbox_asset(a)
 		pcall(function() placed:SetAttribute("BloxAutoPlace", true) end)
 	end
 
-	task.defer(pushSnapshot)
+	scheduleSnapshot()
 	if placed then stabilizeGeneratedInstance(placed) end
 	return true, nil, placed
 end
@@ -2275,7 +2407,7 @@ function Actions.update_script(a)
 	if not inst then return false, "script not found: " .. tostring(path) end
 	if not inst:IsA("LuaSourceContainer") then return false, "target is not a script" end
 	inst.Source = a.source or a.content or ""
-	task.defer(pushSnapshot)
+	scheduleSnapshot()
 	return true
 end
 
@@ -2286,13 +2418,13 @@ function Actions.delete_script(a)
 	local inst = resolvePath(path, false)
 	if not inst then return true end -- already gone, treat as success
 	pcall(function() inst:Destroy() end)
-	task.defer(pushSnapshot)
+	scheduleSnapshot()
 	return true
 end
 
 -- Scan the project and push the snapshot
 function Actions.scan_project()
-	task.defer(pushSnapshot)
+	scheduleSnapshot()
 	return true
 end
 
@@ -2660,7 +2792,8 @@ function pushSnapshot()
 		return
 	end
 	if scanInProgress then
-		syncInfo.Text = "Scan already running"
+		syncInfo.Text = "Scan already running — will retry"
+		scheduleSnapshot(6)
 		return
 	end
 	scanInProgress = true
@@ -2682,9 +2815,9 @@ function pushSnapshot()
 	if scan.timedOut then
 		scanInProgress = false
 		status.Text = "Connected"
-		syncInfo.Text = ("Scan timed out at %d object(s)"):format(scan.count)
-		setPill("error")
-		appendLog("Project scan timed out")
+		syncInfo.Text = ("Large project scan paused at %d object(s); build remains applied"):format(scan.count)
+		setPill("connected")
+		appendLog("Large project scan paused before upload so existing project files were not deleted.")
 		return
 	end
 	local data, err = postJSON("/api/studio/snapshot", {
@@ -2764,7 +2897,7 @@ refreshReviewBtnLabel()
 
 -- Focus the Studio camera on a freshly created instance so the user immediately
 -- sees what BloxSmith inserted (only for visible BaseParts / Models).
-local function focusOn(instances)
+function focusOn(instances)
 	if not instances or #instances == 0 then return end
 	pcall(function() Selection:Set(instances) end)
 	local target
@@ -2832,7 +2965,30 @@ local function applyActions(actions, sourceLabel)
 	local reports = {}
 	local failedDetails = {}
 	local createdInstances = {}
-	for _, a in ipairs(actions) do
+
+	local function describeApplyAction(a)
+		local t = tostring(a and a.type or "?")
+		local label = tostring((a and (a.name or a.assetName or a.path or a.parent or a.assetId)) or "")
+		if label ~= "" then return t .. " " .. label end
+		return t
+	end
+
+	local function flushReports()
+		if #reports == 0 then return end
+		local payload = reports
+		reports = {}
+		pcall(function() postJSON("/report", { reports = payload }) end)
+	end
+
+	local total = #actions
+	appendLog(("Applying %d action(s) live in Studio..."):format(total))
+	syncInfo.Text = ("Applying 0/%d action(s)..."):format(total)
+
+	for index, a in ipairs(actions) do
+		if index == 1 or index % APPLY_YIELD_EVERY == 0 or index == total then
+			syncInfo.Text = ("Applying %d/%d: %s"):format(index, total, describeApplyAction(a))
+		end
+
 		if isWorldBuildAction(a) then touchedWorld = true end
 		local pcOk, success, errOrInst, instMaybe = pcall(dispatch, a)
 		local executed = pcOk and success and success ~= false
@@ -2851,7 +3007,12 @@ local function applyActions(actions, sourceLabel)
 		end
 		if executed then
 			ok = ok + 1
-			if createdInst then table.insert(createdInstances, createdInst) end
+			if createdInst then
+				table.insert(createdInstances, createdInst)
+				if index == 1 or index % LIVE_FOCUS_EVERY == 0 then
+					pcall(focusOn, { createdInst })
+				end
+			end
 			if a.id then
 				local report = { id = a.id, status = "executed" }
 				if createdInst then
@@ -2865,20 +3026,27 @@ local function applyActions(actions, sourceLabel)
 			fail = fail + 1
 			table.insert(failedDetails, { action = a, error = errMsg })
 			if a.id then table.insert(reports, { id = a.id, status = "failed", error = errMsg }) end
-			pcall(function()
-				postJSON("/errors", { errors = {{
-					projectId = activeProjectId,
-					action_type = a.type,
-					action_id   = a.id,
-					error_message = errMsg,
-				}}})
+			task.spawn(function()
+				pcall(function()
+					postJSON("/errors", { errors = {{
+						projectId = activeProjectId,
+						action_type = a.type,
+						action_id   = a.id,
+						error_message = errMsg,
+					}}})
+				end)
 			end)
+		end
+
+		if #reports >= REPORT_FLUSH_EVERY then
+			flushReports()
+		end
+		if index % APPLY_YIELD_EVERY == 0 then
+			task.wait(0.03)
 		end
 	end
 
-	if #reports > 0 then
-		pcall(function() postJSON("/report", { reports = reports }) end)
-	end
+	flushReports()
 
 	-- Placement Engine: ground, scale, and grid-lay every auto-placed Toolbox
 	-- asset from this batch so the scene lands clean — no floating, sinking,
@@ -2895,10 +3063,13 @@ local function applyActions(actions, sourceLabel)
 			end
 		end
 		if #autoPlaced > 0 then
+			syncInfo.Text = ("Arranging %d Toolbox asset(s)..."):format(#autoPlaced)
+			task.wait()
 			pcall(function() BloxPlacement.arrange(autoPlaced) end)
 			for _, inst in ipairs(autoPlaced) do
 				pcall(function() inst:SetAttribute("BloxAutoPlace", nil) end)
 			end
+			pcall(focusOn, autoPlaced)
 			appendLog(("Placement Engine arranged %d Toolbox asset(s): grounded, scaled, and laid out cleanly."):format(#autoPlaced))
 		end
 	end
@@ -2916,6 +3087,7 @@ local function applyActions(actions, sourceLabel)
 	end
 
 	if touchedWorld then
+		syncInfo.Text = "Verifying spawn and persistent world content..."
 		local spawn = ensurePersistentWorldAfterInsert(createdInstances)
 		appendLog("Inserted generated world content into persistent Workspace folders; SpawnLocation verified for Play mode.")
 		if spawn then table.insert(createdInstances, spawn) end
@@ -2929,7 +3101,7 @@ local function applyActions(actions, sourceLabel)
 	statsErrors  = statsErrors  + fail
 	pcall(refreshStatsInfo)
 
-	task.defer(pushSnapshot)
+	scheduleSnapshot()
 	task.delay(3, function()
 		if connected then setPill("connected") end
 	end)
@@ -3309,7 +3481,7 @@ end)
 local function pull(manual)
 	if not activeProjectId then return end
 	if getPaused() then syncInfo.Text = "Paused — incoming actions are ignored"; return end
-	local data, err = postJSON("/sync", { projectId = activeProjectId, manual = manual == true })
+	local data, err = postJSON("/sync", { projectId = activeProjectId, manual = manual == true, limit = SYNC_ACTION_LIMIT })
 	if not data then syncInfo.Text = "Sync error: " .. tostring(err); return end
 	lastSyncAt = os.time()
 	pcall(refreshStatsInfo)
@@ -3491,7 +3663,7 @@ local function doConnect()
 		syncInfo.TextColor3 = C.text
 		pushContext(true)
 		pull()
-		task.defer(pushSnapshot)
+		scheduleSnapshot()
 	else
 		syncInfo.Text = "No projects yet — create one on the website"
 	end
@@ -3588,7 +3760,7 @@ cleanSyncedBtn.MouseButton1Click:Connect(function()
 
 	syncInfo.Text = ("Cleaned %d auto-synced artifact(s)"):format(removed)
 	appendLog("Clean Synced: removed " .. tostring(removed) .. " object(s)")
-	task.defer(pushSnapshot)
+	scheduleSnapshot()
 end)
 
 -- Test Connection: pings the server with the current token + API URL and

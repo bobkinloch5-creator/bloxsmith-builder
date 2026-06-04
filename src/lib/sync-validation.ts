@@ -511,6 +511,12 @@ export function validateGenerated(
       });
     }
 
+    if (a.type === "script" && typeof a.path === "string" && (!a.parent || !a.name)) {
+      const parts = a.path.replace(/\./g, "/").split("/").filter(Boolean);
+      if (!a.name) a.name = parts[parts.length - 1];
+      if (!a.parent && parts.length > 1) a.parent = parts.slice(0, -1).join("/");
+    }
+
     if (a.type === "remote") {
       const parent = (a.parent ?? "") as string;
       const className = (a.className ?? "RemoteEvent") as string;
@@ -1002,6 +1008,12 @@ export function autoRepairResult(
   for (const a of actions) {
     if (!a || typeof a !== "object" || !a.type) continue;
     const act = normalizeActionProps({ ...a });
+
+    if (act.type === "script" && typeof act.path === "string" && (!act.parent || !act.name)) {
+      const parts = act.path.replace(/\./g, "/").split("/").filter(Boolean);
+      if (!act.name) act.name = parts[parts.length - 1];
+      if (!act.parent && parts.length > 1) act.parent = parts.slice(0, -1).join("/");
+    }
 
     // Casing Normalization for actions
     if (typeof act.parent === "string" && act.parent) {

@@ -43,6 +43,10 @@ export const Route = createFileRoute("/api/studio/poll")({
 
           const body = await request.json().catch(() => ({}));
           const projectId = body?.projectId;
+          const requestedLimit = Number(body?.limit);
+          const actionLimit = Number.isFinite(requestedLimit)
+            ? Math.max(1, Math.min(50, Math.floor(requestedLimit)))
+            : 35;
           if (!projectId)
             return new Response(JSON.stringify({ error: "missing projectId" }), {
               status: 400,
@@ -63,7 +67,7 @@ export const Route = createFileRoute("/api/studio/poll")({
             .eq("project_id", projectId)
             .eq("status", "pending")
             .order("created_at", { ascending: true })
-            .limit(200);
+            .limit(actionLimit);
 
           const actions = (pending ?? []).map((row) => ({
             id: row.id,
@@ -95,7 +99,7 @@ export const Route = createFileRoute("/api/studio/poll")({
             }),
             { headers: cors },
           );
-        } catch (e: any) {
+        } catch (e: unknown) {
           console.error("API error in studio/poll:", e);
           return new Response(JSON.stringify({ error: "Internal server error" }), {
             status: 500,

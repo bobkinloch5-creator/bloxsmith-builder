@@ -16,6 +16,8 @@ export type FindingKind =
   | "orphaned_remote"
   | "performance"
   | "missing_spawn"
+  | "floating_object"
+  | "overlapping_objects"
   | "missing_asset"
   | "broken_npc"
   | "broken_tool"
@@ -52,21 +54,23 @@ export type ProjectFile = {
 };
 
 export type StudioError = { file_path: string | null; error_message: string };
+type PluginAction = Record<string, unknown> & { type: string };
 
 let counter = 0;
 const nid = (p: string) => `${p}_${Date.now().toString(36)}_${(counter++).toString(36)}`;
 
 function cleanStudioName(value: string | undefined, fallback: string) {
-  const cleaned = String(value || fallback)
-    .split("/")
-    .pop()
-    ?.replace(/[^A-Za-z0-9_ ]+/g, " ")
-    .trim()
-    .replace(/\s+/g, "") || fallback;
+  const cleaned =
+    String(value || fallback)
+      .split("/")
+      .pop()
+      ?.replace(/[^A-Za-z0-9_ ]+/g, " ")
+      .trim()
+      .replace(/\s+/g, "") || fallback;
   return cleaned || fallback;
 }
 
-function uniqueActions(actions: any[]) {
+function uniqueActions<T extends PluginAction>(actions: T[]) {
   const seen = new Set<string>();
   return actions.filter((action) => {
     if (!action || typeof action.type !== "string") return false;
@@ -85,7 +89,9 @@ function uniqueActions(actions: any[]) {
 }
 
 function nearestGuiRoot(target: string) {
-  const parts = String(target || "").split("/").filter(Boolean);
+  const parts = String(target || "")
+    .split("/")
+    .filter(Boolean);
   const starterGuiIndex = parts.findIndex((p) => p === "StarterGui");
   if (starterGuiIndex >= 0 && parts[starterGuiIndex + 1]) {
     return parts.slice(0, starterGuiIndex + 2).join("/");
@@ -95,24 +101,52 @@ function nearestGuiRoot(target: string) {
 
 function inferMoveDestination(step: PlanStep) {
   const text = `${step.title} ${step.detail} ${step.target}`.toLowerCase();
-  if (/localplayer|mouse|userinputservice|playergui|camera|button|screen|gui/.test(text)) return "StarterGui";
-  if (/datastore|leaderstats|serverstorage|serverscript|bindtoclose|marketplaceservice/.test(text)) return "ServerScriptService";
+  if (/localplayer|mouse|userinputservice|playergui|camera|button|screen|gui/.test(text))
+    return "StarterGui";
+  if (/datastore|leaderstats|serverstorage|serverscript|bindtoclose|marketplaceservice/.test(text))
+    return "ServerScriptService";
   if (/remote|shared|module|replicatedstorage/.test(text)) return "ReplicatedStorage";
   return "ServerScriptService";
 }
 
 function inferCreateAction(step: PlanStep) {
-  const parts = String(step.target || "ReplicatedStorage/BloxSmithRemote").split("/").filter(Boolean);
+  const parts = String(step.target || "ReplicatedStorage/BloxSmithRemote")
+    .split("/")
+    .filter(Boolean);
   const name = cleanStudioName(parts.pop(), "BloxSmithRemote");
   const parent = parts.join("/") || "ReplicatedStorage";
   const text = `${step.title} ${step.detail} ${step.target}`.toLowerCase();
-  const className =
-    /folder|directory|container/.test(text)
-      ? "Folder"
-      : /function|invoke/.test(text)
-        ? "RemoteFunction"
-        : "RemoteEvent";
+  const className = /folder|directory|container/.test(text)
+    ? "Folder"
+    : /function|invoke/.test(text)
+      ? "RemoteFunction"
+      : "RemoteEvent";
   return { type: "create", className, name, parent };
+}
+
+function parseProperties(file: ProjectFile): Record<string, unknown> | null {
+  const raw = String(file.content || "").trim();
+  if (!raw.startsWith("{")) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function numberTriple(value: unknown): [number, number, number] | null {
+  if (!Array.isArray(value) || value.length < 3) return null;
+  const nums = value.slice(0, 3).map((n) => Number(n));
+  return nums.every(Number.isFinite) ? (nums as [number, number, number]) : null;
+}
+
+function placementRoot(path: string) {
+  if (/^Workspace\/Map\b/i.test(path)) return "Workspace/Map";
+  if (/^Workspace\/City\b/i.test(path)) return "Workspace/City";
+  if (/^Workspace\/Vehicles\b/i.test(path)) return "Workspace/Vehicles";
+  if (/^Workspace\/NPCs\b/i.test(path)) return "Workspace/NPCs";
+  return "Workspace";
 }
 
 function buildButtonWiringSource(steps: PlanStep[]) {
@@ -123,7 +157,10 @@ function buildButtonWiringSource(steps: PlanStep[]) {
         .filter((name) => /button/i.test(name)),
     ),
   );
-  const buttonNames = names.length > 0 ? names : ["PlayButton", "SettingsButton", "ShopButton", "CloseButton", "ActionButton"];
+  const buttonNames =
+    names.length > 0
+      ? names
+      : ["PlayButton", "SettingsButton", "ShopButton", "CloseButton", "ActionButton"];
   return `-- BloxSmith Playtest repair
 -- Wires common UI buttons so generated menus/dialogues respond during testing.
 local TweenService = game:GetService("TweenService")
@@ -167,7 +204,10 @@ end`;
 function buildDiagnosticsSource(opts: { request: string; steps: PlanStep[] }) {
   const stepLines = opts.steps
     .slice(0, 12)
-    .map((step, index) => `-- ${index + 1}. ${step.title} (${step.actionType}) @ ${step.target}\n--    ${step.detail.replace(/\s+/g, " ").slice(0, 220)}`)
+    .map(
+      (step, index) =>
+        `-- ${index + 1}. ${step.title} (${step.actionType}) @ ${step.target}\n--    ${step.detail.replace(/\s+/g, " ").slice(0, 220)}`,
+    )
     .join("\n");
   return `-- BloxSmith Playtest diagnostic script
 -- Created because the automatic action converter needed a safe fallback.
@@ -182,17 +222,28 @@ function deterministicActionsForSteps(opts: {
   steps: PlanStep[];
   files: ProjectFile[];
 }) {
-  const actions: any[] = [];
+  const actions: PluginAction[] = [];
   const buttonSteps: PlanStep[] = [];
 
-  actions.push({ type: "create", className: "Folder", name: "BloxSmithPlaytest", parent: "ReplicatedStorage" });
+  actions.push({
+    type: "create",
+    className: "Folder",
+    name: "BloxSmithPlaytest",
+    parent: "ReplicatedStorage",
+  });
 
   for (const step of opts.steps.slice(0, 12)) {
     const text = `${step.actionType} ${step.title} ${step.detail} ${step.target}`.toLowerCase();
-    if (step.actionType === "create" || /missing remote|remoteevent|remotefunction|missing folder/.test(text)) {
+    if (
+      step.actionType === "create" ||
+      /missing remote|remoteevent|remotefunction|missing folder/.test(text)
+    ) {
       actions.push(inferCreateAction(step));
     }
-    if (step.actionType === "move" || /wrong place|placement|local script|localscript|server script|serverscript/.test(text)) {
+    if (
+      step.actionType === "move" ||
+      /wrong place|placement|local script|localscript|server script|serverscript/.test(text)
+    ) {
       actions.push({ type: "move", path: step.target, to: inferMoveDestination(step) });
     }
     if (step.actionType === "set" && step.target) {
@@ -200,6 +251,16 @@ function deterministicActionsForSteps(opts: {
     }
     if (/button|activated|mousebutton|clickable|clicking it does nothing/.test(text)) {
       buttonSteps.push(step);
+    }
+    if (
+      step.actionType === "repairPlacement" ||
+      /placement|floating|overlap|overlapping|messy|pile|ground|arrange|layout/.test(text)
+    ) {
+      actions.push({
+        type: "repairPlacement",
+        path: step.target || "Workspace/Map",
+        limit: 180,
+      });
     }
   }
 
@@ -253,9 +314,16 @@ export function runHeuristics(files: ProjectFile[], errors: StudioError[]): Find
     if (!isScript(f)) continue;
 
     // 2) RemoteEvent referenced but never created anywhere in the project.
-    const remoteRefs = [...src.matchAll(/(?:WaitForChild|FindFirstChild)\(\s*["']([A-Za-z0-9_]+)["']\s*\)/g)]
+    const remoteRefs = [
+      ...src.matchAll(/(?:WaitForChild|FindFirstChild)\(\s*["']([A-Za-z0-9_]+)["']\s*\)/g),
+    ]
       .map((m) => m[1])
-      .filter((name) => /remote|event|rf|re_|fire|invoke/i.test(name) || src.includes(`${name}:FireServer`) || src.includes(`${name}:FireClient`));
+      .filter(
+        (name) =>
+          /remote|event|rf|re_|fire|invoke/i.test(name) ||
+          src.includes(`${name}:FireServer`) ||
+          src.includes(`${name}:FireClient`),
+      );
     for (const name of new Set(remoteRefs)) {
       const createdSomewhere =
         new RegExp(`Instance\\.new\\(\\s*["']Remote(?:Event|Function)["']`).test(allSource) &&
@@ -346,7 +414,8 @@ export function runHeuristics(files: ProjectFile[], errors: StudioError[]): Find
   const buttons = files.filter((f) => /TextButton|ImageButton/.test(f.file_type));
   for (const b of buttons) {
     const name = b.path.split("/").pop() || b.path;
-    const wired = new RegExp(`${name}[^\\n]*(Activated|MouseButton1Click|MouseButton1Down)`).test(allSource) ||
+    const wired =
+      new RegExp(`${name}[^\\n]*(Activated|MouseButton1Click|MouseButton1Down)`).test(allSource) ||
       allSource.includes(`${name}.Activated`);
     if (!wired) {
       found.push({
@@ -398,7 +467,10 @@ export function runHeuristics(files: ProjectFile[], errors: StudioError[]): Find
         target: f.path,
       });
     }
-    if (/HttpService.*:GetAsync|HttpService.*:PostAsync/.test(src) && !/roblox\.com|roproxy/.test(src)) {
+    if (
+      /HttpService.*:GetAsync|HttpService.*:PostAsync/.test(src) &&
+      !/roblox\.com|roproxy/.test(src)
+    ) {
       found.push({
         id: nid("back"),
         severity: "warning",
@@ -439,11 +511,16 @@ export function runHeuristics(files: ProjectFile[], errors: StudioError[]): Find
   }
 
   // 10) UI elements with zero size.
-  const uiElements = files.filter((f) => /Frame|TextLabel|TextButton|ImageLabel|ImageButton|ScrollingFrame/.test(f.file_type));
+  const uiElements = files.filter((f) =>
+    /Frame|TextLabel|TextButton|ImageLabel|ImageButton|ScrollingFrame/.test(f.file_type),
+  );
   for (const ui of uiElements) {
     const name = ui.path.split("/").pop() || ui.path;
     // Check if the content mentions size 0 or if file_type suggests it's a UI element with no size config
-    if (ui.content && /Size\s*=\s*UDim2\.new\s*\(\s*0\s*,\s*0\s*,\s*0\s*,\s*0\s*\)/.test(ui.content)) {
+    if (
+      ui.content &&
+      /Size\s*=\s*UDim2\.new\s*\(\s*0\s*,\s*0\s*,\s*0\s*,\s*0\s*\)/.test(ui.content)
+    ) {
       found.push({
         id: nid("uisz"),
         severity: "warning",
@@ -456,11 +533,18 @@ export function runHeuristics(files: ProjectFile[], errors: StudioError[]): Find
   }
 
   // 11) Orphaned RemoteEvents (created but never connected to).
-  const createdRemotes = [...allSource.matchAll(/Instance\.new\(["']Remote(?:Event|Function)["']\)[\s\S]{0,80}Name\s*=\s*["']([A-Za-z0-9_]+)["']/g)]
-    .map((m) => m[1]);
+  const createdRemotes = [
+    ...allSource.matchAll(
+      /Instance\.new\(["']Remote(?:Event|Function)["']\)[\s\S]{0,80}Name\s*=\s*["']([A-Za-z0-9_]+)["']/g,
+    ),
+  ].map((m) => m[1]);
   for (const remoteName of new Set(createdRemotes)) {
-    const hasHandler = new RegExp(`${remoteName}[\\s\\S]{0,30}(?:OnServerEvent|OnClientEvent|OnServerInvoke|OnClientInvoke|:Connect)`).test(allSource);
-    const hasFire = new RegExp(`${remoteName}[\\s\\S]{0,30}(?:FireServer|FireClient|FireAllClients|InvokeServer|InvokeClient)`).test(allSource);
+    const hasHandler = new RegExp(
+      `${remoteName}[\\s\\S]{0,30}(?:OnServerEvent|OnClientEvent|OnServerInvoke|OnClientInvoke|:Connect)`,
+    ).test(allSource);
+    const hasFire = new RegExp(
+      `${remoteName}[\\s\\S]{0,30}(?:FireServer|FireClient|FireAllClients|InvokeServer|InvokeClient)`,
+    ).test(allSource);
     if (!hasHandler && !hasFire) {
       found.push({
         id: nid("orph"),
@@ -478,7 +562,10 @@ export function runHeuristics(files: ProjectFile[], errors: StudioError[]): Find
     const src = f.content || "";
     if (!isScript(f)) continue;
     // Instance.new inside a while/RenderStepped/Heartbeat loop without Debris
-    if (/(?:RenderStepped|Heartbeat|Stepped):Connect.*Instance\.new/s.test(src) && !/Debris/.test(src)) {
+    if (
+      /(?:RenderStepped|Heartbeat|Stepped):Connect.*Instance\.new/s.test(src) &&
+      !/Debris/.test(src)
+    ) {
       found.push({
         id: nid("perf"),
         severity: "warning",
@@ -502,26 +589,108 @@ export function runHeuristics(files: ProjectFile[], errors: StudioError[]): Find
   }
 
   // 13) Missing SpawnLocation — game needs at least one.
-  const hasSpawn = files.some((f) => /SpawnLocation/.test(f.file_type) || /SpawnLocation|:IsA\(["']SpawnLocation/.test(f.content || ""));
-  const hasWorkspaceContent = files.some((f) => f.service_location === "Workspace" || f.service_location?.startsWith("Workspace/"));
+  const hasSpawn = files.some(
+    (f) =>
+      /SpawnLocation/.test(f.file_type) ||
+      /SpawnLocation|:IsA\(["']SpawnLocation/.test(f.content || ""),
+  );
+  const hasWorkspaceContent = files.some(
+    (f) => f.service_location === "Workspace" || f.service_location?.startsWith("Workspace/"),
+  );
   if (hasWorkspaceContent && !hasSpawn) {
     found.push({
       id: nid("spn"),
       severity: "warning",
       kind: "missing_spawn",
       title: "No SpawnLocation found",
-      detail: "The project has Workspace content but no SpawnLocation. Players will spawn at the default position (0,100,0) which may be above or below the map.",
+      detail:
+        "The project has Workspace content but no SpawnLocation. Players will spawn at the default position (0,100,0) which may be above or below the map.",
       target: "Workspace",
     });
   }
 
-  // 14) Missing / broken asset references (empty or zeroed asset IDs).
+  // 14) Obvious map placement problems from the Studio snapshot properties.
+  // Snapshot stores non-script properties as JSON, so we can spot common
+  // "city is a messy pile / floating above the ground" failures before the
+  // user has to inspect every model by hand.
+  const bounds = files
+    .map((f) => {
+      const props = parseProperties(f);
+      const position = numberTriple(props?.position);
+      const size = numberTriple(props?.size);
+      if (!position || !size) return null;
+      if (!/^Workspace\b/i.test(f.path)) return null;
+      if (/Baseplate|SpawnLocation|Camera|Light|Lamp|Sign|Billboard/i.test(f.path)) return null;
+      return {
+        path: f.path,
+        root: placementRoot(f.path),
+        x: position[0],
+        y: position[1],
+        z: position[2],
+        sx: Math.max(size[0], 0.1),
+        sy: Math.max(size[1], 0.1),
+        sz: Math.max(size[2], 0.1),
+      };
+    })
+    .filter(Boolean) as Array<{
+    path: string;
+    root: string;
+    x: number;
+    y: number;
+    z: number;
+    sx: number;
+    sy: number;
+    sz: number;
+  }>;
+
+  let floatingCount = 0;
+  for (const b of bounds) {
+    const bottom = b.y - b.sy / 2;
+    if (bottom > 8 && floatingCount < 4) {
+      floatingCount++;
+      found.push({
+        id: nid("float"),
+        severity: "warning",
+        kind: "floating_object",
+        title: "Map object appears to be floating",
+        detail: `${b.path} has its bottom about ${bottom.toFixed(1)} studs above ground. Queue a placement repair to ground and space the map.`,
+        target: b.root,
+      });
+    }
+  }
+
+  let overlapCount = 0;
+  const sample = bounds.slice(0, 140);
+  for (let i = 0; i < sample.length && overlapCount < 4; i++) {
+    for (let j = i + 1; j < sample.length && overlapCount < 4; j++) {
+      const a = sample[i];
+      const b = sample[j];
+      if (a.root !== b.root) continue;
+      const overlapX = Math.abs(a.x - b.x) < (a.sx + b.sx) * 0.42;
+      const overlapZ = Math.abs(a.z - b.z) < (a.sz + b.sz) * 0.42;
+      const overlapY = Math.abs(a.y - b.y) < (a.sy + b.sy) * 0.45;
+      if (overlapX && overlapZ && overlapY) {
+        overlapCount++;
+        found.push({
+          id: nid("overlap"),
+          severity: "warning",
+          kind: "overlapping_objects",
+          title: "Map objects overlap",
+          detail: `${a.path} and ${b.path} occupy nearly the same space. Queue a placement repair to separate and ground nearby map objects.`,
+          target: a.root,
+        });
+      }
+    }
+  }
+
+  // 15) Missing / broken asset references (empty or zeroed asset IDs).
   for (const f of files) {
     const src = f.content || "";
     if (!isScript(f)) continue;
     const brokenAsset =
-      /\b(SoundId|Texture|TextureId|MeshId|Image|HatAttachment|Decal)\s*=\s*["'](?:rbxassetid:\/\/0?|)["']/.test(src) ||
-      /rbxassetid:\/\/0\b/.test(src);
+      /\b(SoundId|Texture|TextureId|MeshId|Image|HatAttachment|Decal)\s*=\s*["'](?:rbxassetid:\/\/0?|)["']/.test(
+        src,
+      ) || /rbxassetid:\/\/0\b/.test(src);
     if (brokenAsset) {
       found.push({
         id: nid("asset"),
@@ -534,7 +703,7 @@ export function runHeuristics(files: ProjectFile[], errors: StudioError[]): Find
     }
   }
 
-  // 15) NPC models with no Humanoid (won't walk, animate, or take damage).
+  // 16) NPC models with no Humanoid (won't walk, animate, or take damage).
   const npcModels = files.filter(
     (f) =>
       f.file_type === "Model" &&
@@ -557,12 +726,15 @@ export function runHeuristics(files: ProjectFile[], errors: StudioError[]): Find
     }
   }
 
-  // 16) Tools with no Handle (can't be equipped without one unless RequiresHandle=false).
+  // 17) Tools with no Handle (can't be equipped without one unless RequiresHandle=false).
   const tools = files.filter((f) => f.file_type === "Tool");
   for (const t of tools) {
     const childPrefix = t.path + "/";
     const hasHandle = files.some(
-      (o) => o.path.startsWith(childPrefix) && /\/Handle$/.test(o.path) && /Part|MeshPart/.test(o.file_type),
+      (o) =>
+        o.path.startsWith(childPrefix) &&
+        /\/Handle$/.test(o.path) &&
+        /Part|MeshPart/.test(o.file_type),
     );
     if (!hasHandle) {
       found.push({
@@ -576,14 +748,23 @@ export function runHeuristics(files: ProjectFile[], errors: StudioError[]): Find
     }
   }
 
-  // 17) Deprecated / legacy APIs — still run, but cause lag and subtle bugs.
+  // 18) Deprecated / legacy APIs — still run, but cause lag and subtle bugs.
   const DEPRECATED: Array<{ re: RegExp; fix: string }> = [
-    { re: /(?:^|[^.\w])wait\s*\(/m, fix: "use task.wait() instead of the global wait() (more accurate, no throttling)" },
+    {
+      re: /(?:^|[^.\w])wait\s*\(/m,
+      fix: "use task.wait() instead of the global wait() (more accurate, no throttling)",
+    },
     { re: /(?:^|[^.\w])spawn\s*\(/m, fix: "use task.spawn() instead of the global spawn()" },
     { re: /(?:^|[^.\w])delay\s*\(/m, fix: "use task.delay() instead of the global delay()" },
     { re: /:remove\s*\(\s*\)/m, fix: "use :Destroy() instead of the deprecated :remove()" },
-    { re: /Humanoid:LoadAnimation\b/m, fix: "load animations on the Humanoid's Animator (Humanoid:WaitForChild('Animator'):LoadAnimation) — Humanoid:LoadAnimation is deprecated" },
-    { re: /workspace:FindPartOnRay\b|:FindPartOnRay\b/m, fix: "use workspace:Raycast() instead of the deprecated FindPartOnRay" },
+    {
+      re: /Humanoid:LoadAnimation\b/m,
+      fix: "load animations on the Humanoid's Animator (Humanoid:WaitForChild('Animator'):LoadAnimation) — Humanoid:LoadAnimation is deprecated",
+    },
+    {
+      re: /workspace:FindPartOnRay\b|:FindPartOnRay\b/m,
+      fix: "use workspace:Raycast() instead of the deprecated FindPartOnRay",
+    },
   ];
   for (const f of files) {
     const src = f.content || "";
@@ -616,7 +797,7 @@ export async function buildActionsForSteps(opts: {
   request: string;
   steps: PlanStep[];
   files: ProjectFile[];
-}): Promise<any[]> {
+}): Promise<PluginAction[]> {
   try {
     const gw = resolveBuiltInGateway({ kind: "build", thinking: true });
     const { generateText } = await import("ai");
@@ -633,7 +814,8 @@ export async function buildActionsForSteps(opts: {
       '{"type":"create","className":"Folder","name":"Remotes","parent":"ReplicatedStorage"}\n' +
       '{"type":"move","path":"StarterGui/Handler","to":"ServerScriptService"}\n' +
       '{"type":"set","path":"...","property":"...","value":...}\n' +
-      "Use valid Roblox service paths and syntactically valid Luau. Keep changes minimal and focused on the steps. No prose, no markdown.";
+      '{"type":"repairPlacement","path":"Workspace/Map","limit":180}\n' +
+      "Use valid Roblox service paths and syntactically valid Luau. Keep changes minimal and focused on the steps. Use repairPlacement for messy, floating, overlapping, or poorly arranged map content. No prose, no markdown.";
     const user = `USER REQUEST: ${opts.request}\n\nAPPROVED STEPS:\n${JSON.stringify(opts.steps, null, 0)}\n\nFILE INDEX:\n${JSON.stringify(fileIndex.slice(0, 120), null, 0)}`;
     const { text } = await generateText({
       model: gw.model,
@@ -646,7 +828,7 @@ export async function buildActionsForSteps(opts: {
     const parsed = JSON.parse(clean);
     if (Array.isArray(parsed) && parsed.length > 0) {
       const actions = parsed
-        .filter((a) => a && typeof a.type === "string")
+        .filter((a): a is PluginAction => Boolean(a) && typeof a.type === "string")
         .slice(0, 40);
       if (actions.length > 0) return actions;
     }
@@ -681,7 +863,9 @@ export async function synthesizePlan(opts: {
           ? "create"
           : f.kind === "script_placement"
             ? "move"
-            : "script",
+            : f.kind === "floating_object" || f.kind === "overlapping_objects"
+              ? "repairPlacement"
+              : "script",
     })),
   };
 
@@ -691,8 +875,8 @@ export async function synthesizePlan(opts: {
     const sys =
       "You are BloxSmith Playtest AI, a Roblox QA developer. You receive a user's plain-language request, a list of detected issues, and a file index. " +
       "Interpret what the user actually wants, choose the issues that matter for that request, and output a SHORT fix plan. " +
-      "Respond with ONLY JSON: {\"summary\":string,\"steps\":[{\"id\":string,\"title\":string,\"detail\":string,\"target\":string,\"actionType\":string}]}. " +
-      "actionType must be one of: script, update_script, create, create_part, set, move, rename, organize. No prose, no markdown.";
+      'Respond with ONLY JSON: {"summary":string,"steps":[{"id":string,"title":string,"detail":string,"target":string,"actionType":string}]}. ' +
+      "actionType must be one of: script, update_script, create, create_part, set, move, rename, organize, repairPlacement. Use repairPlacement for floating, overlapping, piled, or messy map layout. No prose, no markdown.";
     const user = `USER REQUEST: ${opts.request || "(general health check)"}\n\nDETECTED ISSUES:\n${JSON.stringify(opts.findings, null, 0)}\n\nFILE INDEX:\n${JSON.stringify(opts.fileIndex.slice(0, 120), null, 0)}`;
     const { text } = await generateText({
       model: gw.model,
@@ -706,7 +890,7 @@ export async function synthesizePlan(opts: {
     if (parsed && Array.isArray(parsed.steps)) {
       return {
         summary: String(parsed.summary || fallback.summary),
-        steps: parsed.steps.slice(0, 12).map((s: any, i: number) => ({
+        steps: parsed.steps.slice(0, 12).map((s: Record<string, unknown>, i: number) => ({
           id: String(s.id || `step_${i}`),
           title: String(s.title || "Fix"),
           detail: String(s.detail || ""),

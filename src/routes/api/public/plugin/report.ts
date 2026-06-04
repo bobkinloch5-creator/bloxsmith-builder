@@ -32,8 +32,11 @@ async function userFromToken(token: string | null) {
 
 type Report = {
   id: string;
-  status: "executed" | "failed";
+  status: "executed" | "failed" | "error";
   error?: string | null;
+  path?: string | null;
+  name?: string | null;
+  className?: string | null;
 };
 
 export const Route = createFileRoute("/api/public/plugin/report")({
@@ -56,7 +59,8 @@ export const Route = createFileRoute("/api/public/plugin/report")({
         let updated = 0;
         const now = new Date().toISOString();
         for (const r of reports) {
-          if (!r?.id || (r.status !== "executed" && r.status !== "failed")) continue;
+          const status = r?.status === "error" ? "failed" : r?.status;
+          if (!r?.id || (status !== "executed" && status !== "failed")) continue;
 
           const { data: action } = await supabaseAdmin
             .from("plugin_actions")
@@ -72,9 +76,9 @@ export const Route = createFileRoute("/api/public/plugin/report")({
           const { error } = await supabaseAdmin
             .from("plugin_actions")
             .update({
-              status: r.status,
+              status,
               executed_at: now,
-              error_message: r.status === "failed" ? (r.error ?? "execution failed") : null,
+              error_message: status === "failed" ? (r.error ?? "execution failed") : null,
             })
             .eq("id", r.id);
           if (!error) updated++;

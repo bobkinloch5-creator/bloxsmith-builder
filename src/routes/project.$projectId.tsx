@@ -192,8 +192,7 @@ function ProjectEditor() {
   const { projectId } = Route.useParams();
   const { user, session, loading, isOwner, profile } = useAuth();
   const { theme } = useTheme();
-  const chatWallpaper =
-    profile?.custom_background_url ?? THEME_WALLPAPERS[theme] ?? null;
+  const chatWallpaper = profile?.custom_background_url ?? THEME_WALLPAPERS[theme] ?? null;
 
   const nav = useNavigate();
   const [project, setProject] = useState<Project | null>(null);
@@ -1668,9 +1667,10 @@ function ProjectEditor() {
       return;
     }
     const queued: QueuedMsg = {
-      id: (typeof crypto !== "undefined" && "randomUUID" in crypto
-        ? crypto.randomUUID()
-        : `q-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`),
+      id:
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `q-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       prompt,
       attachments,
       chatMode,
@@ -1697,7 +1697,6 @@ function ProjectEditor() {
     void runQueuedMessage(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aiBusy, msgQueue, editingQueueId]);
-
 
   const runPlaytestRequest = async () => {
     if (aiBusy) return;
@@ -1726,7 +1725,7 @@ Goal: make the requested scenario actually runnable and observable in Studio, no
 
 Do this in order:
 1. Read the current project files and any live Studio/plugin snapshot.
-2. Set up the test scenario the user asked for by QUEUEING REAL ACTIONS (create/create_part/spawn/script/insertAsset/set/select etc.) — e.g. a spawn point, the player's starting tools/items, any props, and any temporary test scripts needed to observe the behavior. Keep changes focused and clearly named (e.g. put test-only objects under a "Workspace/PlaytestSetup" folder so they're easy to remove).
+2. Set up the test scenario the user asked for by QUEUEING REAL ACTIONS (create/create_part/spawn/script/insertAsset/set/select/repairPlacement etc.) — e.g. a spawn point, the player's starting tools/items, any props, placement repair for messy/floating/overlapping maps, and any temporary test scripts needed to observe the behavior. Keep changes focused and clearly named (e.g. put test-only objects under a "Workspace/PlaytestSetup" folder so they're easy to remove).
 3. Add small, safe instrumentation if helpful (e.g. a Script that prints clear [PLAYTEST] markers to Output for the things the user wants to verify).
 4. As the FINAL action, emit a single "playtest_ready" action with: focus = the path to the main thing to watch, note = one short line on what you set up, and checklist = the concrete things the user should look for when they press Play.
 
@@ -1947,9 +1946,6 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
             }
           : undefined
       }
-
-
-
     >
       <Header />
       <SyncValidationDrawer
@@ -2026,9 +2022,7 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
         </div>
       </div>
 
-
       {/* Mobile panel switcher removed — chat is the only mobile view */}
-
 
       <main
         className="flex-1 min-h-0 overflow-hidden grid grid-cols-1 gap-0 relative lg:[grid-template-columns:var(--files-w)_var(--editor-w)_var(--chat-col-w)]"
@@ -2039,9 +2033,6 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
           ["--chat-col-w" as any]: showChat ? (active ? `${chatWidth}px` : "minmax(0,1fr)") : "0px",
         }}
       >
-
-
-
         {/* File panel toggle removed — sidebar hidden on desktop */}
 
         {!showChat && (
@@ -2638,7 +2629,9 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                   </span>
                   Playtest
                 </span>
-                <span className="mt-1 block truncate text-[10px] text-muted-foreground/80">deep QA</span>
+                <span className="mt-1 block truncate text-[10px] text-muted-foreground/80">
+                  deep QA
+                </span>
               </button>
               <button
                 onClick={() => toggleAutoExecute(!autoExecute)}
@@ -3568,9 +3561,7 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                 <span
                   className={`h-1.5 w-1.5 rounded-full ${aiBusy ? "bg-amber-400 animate-pulse" : "bg-emerald-400"}`}
                 />
-                <span className="text-foreground/80">
-                  {aiBusy ? "Generating" : "Connected"}
-                </span>
+                <span className="text-foreground/80">{aiBusy ? "Generating" : "Connected"}</span>
               </span>
               <span className="text-muted-foreground/40">·</span>
               <span>
@@ -3603,8 +3594,7 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                   <span>
                     <span className="text-muted-foreground/60">Elapsed:</span>{" "}
                     <span className="text-foreground/90 tabular-nums normal-case">
-                      {Math.floor(aiBusyElapsed / 60)}:
-                      {String(aiBusyElapsed % 60).padStart(2, "0")}
+                      {Math.floor(aiBusyElapsed / 60)}:{String(aiBusyElapsed % 60).padStart(2, "0")}
                     </span>
                   </span>
                 </>
@@ -3625,7 +3615,6 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
             </div>
           </div>
         </aside>
-
       </main>
 
       {showAiSourceModal && (

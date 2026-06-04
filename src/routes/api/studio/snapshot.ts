@@ -71,7 +71,8 @@ export const Route = createFileRoute("/api/studio/snapshot")({
           // Perform updates and insertions
           for (const file of incomingFiles) {
             if (!file.path) continue;
-            const content = file.source ?? "";
+            const content =
+              typeof file.source === "string" ? file.source : JSON.stringify(file.properties ?? {});
             const fileType = file.className ?? "Folder";
             const serviceLocation = file.parent ?? file.path.split("/")[0] ?? "Workspace";
 
@@ -109,7 +110,7 @@ export const Route = createFileRoute("/api/studio/snapshot")({
           }
 
           return new Response(JSON.stringify({ ok: true }), { headers: cors });
-        } catch (e: any) {
+        } catch (e: unknown) {
           console.error("API error in studio/snapshot:", e);
           return new Response(JSON.stringify({ error: "Internal server error" }), {
             status: 500,
