@@ -18,6 +18,25 @@ async function assertOwnsProject(userId: string, projectId: string) {
 }
 
 /**
+ * Refund charged credits when work fails after the charge, then rethrow so the
+ * caller still sees the original error. Owners are charged 0, so the refund is
+ * a no-op for them. Never let a refund failure mask the real error.
+ */
+async function refundAndRethrow(
+  supabase: { rpc: (fn: string, args: Record<string, unknown>) => Promise<unknown> },
+  amount: number,
+  reason: string,
+  err: unknown,
+): Promise<never> {
+  try {
+    await supabase.rpc("refund_credits", { _amount: amount, _reason: reason });
+  } catch {
+    /* refund best-effort — surface the original error regardless */
+  }
+  throw err;
+}
+
+/**
  * Phase 1 — SCAN + PLAN.
  * Reads the latest synced project files + captured Studio errors, runs the
  * heuristic scanners, asks the AI to interpret the user's request and produce a
@@ -45,43 +64,47 @@ export const startPlaytestScan = createServerFn({ method: "POST" })
 
     const { runHeuristics, synthesizePlan } = await import("./playtest-diagnose.server");
 
-    const [{ data: files }, { data: errs }] = await Promise.all([
-      supabaseAdmin
-        .from("project_files")
-        .select("path,file_type,service_location,content")
-        .eq("project_id", data.projectId),
-      supabaseAdmin
-        .from("studio_errors")
-        .select("file_path,error_message")
-        .eq("project_id", data.projectId)
-        .order("created_at", { ascending: false })
-        .limit(50),
-    ]);
+    try {
+      const [{ data: files }, { data: errs }] = await Promise.all([
+        supabaseAdmin
+          .from("project_files")
+          .select("path,file_type,service_location,content")
+          .eq("project_id", data.projectId),
+        supabaseAdmin
+          .from("studio_errors")
+          .select("file_path,error_message")
+          .eq("project_id", data.projectId)
+          .order("created_at", { ascending: false })
+          .limit(50),
+      ]);
 
-    const fileList = (files ?? []) as any[];
-    const findings = runHeuristics(fileList, (errs ?? []) as any[]);
-    const plan = await synthesizePlan({
-      request: data.request,
-      findings,
-      fileIndex: fileList.map((f) => ({ path: f.path, file_type: f.file_type })),
-    });
-
-    const { data: run, error } = await supabase
-      .from("playtest_runs")
-      .insert({
-        user_id: userId,
-        project_id: data.projectId,
+      const fileList = (files ?? []) as any[];
+      const findings = runHeuristics(fileList, (errs ?? []) as any[]);
+      const plan = await synthesizePlan({
         request: data.request,
-        status: "planned",
         findings,
-        plan,
-        credits_spent: PLAYTEST_SCAN_COST,
-      })
-      .select("*")
-      .single();
-    if (error) throw new Error(error.message);
+        fileIndex: fileList.map((f) => ({ path: f.path, file_type: f.file_type })),
+      });
 
-    return { run };
+      const { data: run, error } = await supabase
+        .from("playtest_runs")
+        .insert({
+          user_id: userId,
+          project_id: data.projectId,
+          request: data.request,
+          status: "planned",
+          findings,
+          plan,
+          credits_spent: PLAYTEST_SCAN_COST,
+        })
+        .select("*")
+        .single();
+      if (error) throw new Error(error.message);
+
+      return { run };
+    } catch (err) {
+      return refundAndRethrow(supabase, PLAYTEST_SCAN_COST, "playtest_scan_failed", err);
+    }
   });
 
 /**
@@ -167,47 +190,51 @@ export const approvePlaytestPlan = createServerFn({ method: "POST" })
     }
 
     // Queue actions for the plugin. A final 'playtest_ready' frames the scene.
-    const rows = (actions as any[]).map((a) => ({
-      project_id: run.project_id,
-      user_id: userId,
-      action_type: a.type,
-      payload: a,
-      status: "pending" as const,
-    }));
-    rows.push({
-      project_id: run.project_id,
-      user_id: userId,
-      action_type: "playtest_ready",
-      payload: {
-        type: "playtest_ready",
-        focus: (actions as any[]).find((a) => a.path || a.target)?.path,
-        note: "BloxSmith Playtest AI applied your approved fixes.",
-        checklist: steps.map((s: any) => s.title).slice(0, 6),
-      } as any,
-      status: "pending" as const,
-    });
+    try {
+      const rows = (actions as any[]).map((a) => ({
+        project_id: run.project_id,
+        user_id: userId,
+        action_type: a.type,
+        payload: a,
+        status: "pending" as const,
+      }));
+      rows.push({
+        project_id: run.project_id,
+        user_id: userId,
+        action_type: "playtest_ready",
+        payload: {
+          type: "playtest_ready",
+          focus: (actions as any[]).find((a) => a.path || a.target)?.path,
+          note: "BloxSmith Playtest AI applied your approved fixes.",
+          checklist: steps.map((s: any) => s.title).slice(0, 6),
+        } as any,
+        status: "pending" as const,
+      });
 
-    const { data: inserted, error: insErr } = await supabaseAdmin
-      .from("plugin_actions")
-      .insert(rows)
-      .select("id,action_type");
-    if (insErr) throw new Error("Failed to queue Studio actions: " + insErr.message);
+      const { data: inserted, error: insErr } = await supabaseAdmin
+        .from("plugin_actions")
+        .insert(rows)
+        .select("id,action_type");
+      if (insErr) throw new Error("Failed to queue Studio actions: " + insErr.message);
 
-    const { data: updated, error: updErr } = await supabase
-      .from("playtest_runs")
-      .update({
-        status: "applying",
-        applied_actions: inserted,
-        rollback_snapshot: rollback,
-        credits_spent: (run.credits_spent ?? 0) + PLAYTEST_FIX_COST,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", run.id)
-      .select("*")
-      .single();
-    if (updErr) throw new Error(updErr.message);
+      const { data: updated, error: updErr } = await supabase
+        .from("playtest_runs")
+        .update({
+          status: "applying",
+          applied_actions: inserted,
+          rollback_snapshot: rollback,
+          credits_spent: (run.credits_spent ?? 0) + PLAYTEST_FIX_COST,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", run.id)
+        .select("*")
+        .single();
+      if (updErr) throw new Error(updErr.message);
 
-    return { run: updated, queued: inserted?.length ?? 0 };
+      return { run: updated, queued: inserted?.length ?? 0 };
+    } catch (err) {
+      return refundAndRethrow(supabase, PLAYTEST_FIX_COST, "playtest_fix_failed", err);
+    }
   });
 
 /**
@@ -271,43 +298,47 @@ export const verifyPlaytestRun = createServerFn({ method: "POST" })
     }
 
     const { runHeuristics } = await import("./playtest-diagnose.server");
-    const [{ data: files }, { data: errs }] = await Promise.all([
-      supabaseAdmin
-        .from("project_files")
-        .select("path,file_type,service_location,content")
-        .eq("project_id", run.project_id),
-      supabaseAdmin
-        .from("studio_errors")
-        .select("file_path,error_message")
-        .eq("project_id", run.project_id)
-        .order("created_at", { ascending: false })
-        .limit(50),
-    ]);
-    const remaining = runHeuristics((files ?? []) as any[], (errs ?? []) as any[]);
+    try {
+      const [{ data: files }, { data: errs }] = await Promise.all([
+        supabaseAdmin
+          .from("project_files")
+          .select("path,file_type,service_location,content")
+          .eq("project_id", run.project_id),
+        supabaseAdmin
+          .from("studio_errors")
+          .select("file_path,error_message")
+          .eq("project_id", run.project_id)
+          .order("created_at", { ascending: false })
+          .limit(50),
+      ]);
+      const remaining = runHeuristics((files ?? []) as any[], (errs ?? []) as any[]);
 
-    // Consider the run resolved if the originally-flagged targets are now clean.
-    const before = new Set((run.findings ?? []).map((f: any) => `${f.kind}:${f.target}`));
-    const stillBad = remaining.filter((f) => before.has(`${f.kind}:${f.target}`));
-    const resolved = stillBad.length === 0;
+      // Consider the run resolved if the originally-flagged targets are now clean.
+      const before = new Set((run.findings ?? []).map((f: any) => `${f.kind}:${f.target}`));
+      const stillBad = remaining.filter((f) => before.has(`${f.kind}:${f.target}`));
+      const resolved = stillBad.length === 0;
 
-    const summary = resolved
-      ? `Fixed ${(run.findings ?? []).length} issue(s). Re-scan is clean for the items we targeted.`
-      : `Applied fixes; ${stillBad.length} item(s) still need attention.`;
+      const summary = resolved
+        ? `Fixed ${(run.findings ?? []).length} issue(s). Re-scan is clean for the items we targeted.`
+        : `Applied fixes; ${stillBad.length} item(s) still need attention.`;
 
-    const { data: updated, error: updErr } = await supabase
-      .from("playtest_runs")
-      .update({
-        status: "done",
-        verification: { resolved, remaining: stillBad },
-        summary,
-        credits_spent: (run.credits_spent ?? 0) + PLAYTEST_VERIFY_COST,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", run.id)
-      .select("*")
-      .single();
-    if (updErr) throw new Error(updErr.message);
-    return { run: updated };
+      const { data: updated, error: updErr } = await supabase
+        .from("playtest_runs")
+        .update({
+          status: "done",
+          verification: { resolved, remaining: stillBad },
+          summary,
+          credits_spent: (run.credits_spent ?? 0) + PLAYTEST_VERIFY_COST,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", run.id)
+        .select("*")
+        .single();
+      if (updErr) throw new Error(updErr.message);
+      return { run: updated };
+    } catch (err) {
+      return refundAndRethrow(supabase, PLAYTEST_VERIFY_COST, "playtest_verify_failed", err);
+    }
   });
 
 /**
