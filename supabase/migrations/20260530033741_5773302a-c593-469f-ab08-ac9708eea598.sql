@@ -1,0 +1,1 @@
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS private_profile boolean NOT NULL DEFAULT false;

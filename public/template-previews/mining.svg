@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-label="Mining simulator preview">
+  <rect width="640" height="360" fill="#172033"/><path d="M0 280 120 105l95 155 75-100 130 120 85-140 135 140v80H0z" fill="#334155"/>
+  <polygon points="360,120 402,190 342,218 305,166" fill="#22d3ee" opacity=".9"/><polygon points="122,196 160,252 90,268" fill="#a78bfa"/><rect x="440" y="80" width="22" height="150" rx="8" fill="#f59e0b" transform="rotate(42 451 155)"/>
+  <text x="58" y="58" fill="#fff" font-family="Arial" font-size="34" font-weight="700">Crystal Mining</text>
+</svg>

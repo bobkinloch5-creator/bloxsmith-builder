@@ -1,0 +1,1 @@
+DROP FUNCTION IF EXISTS public.send_global_chat_message_v2(text, uuid, text, text);

@@ -1,0 +1,136 @@
+--- pristine/bloxsmith-builder-main/src/lib/ai-tools.server.ts	2026-06-04 02:28:00.000000000 +0000
++++ bloxsmith2/bloxsmith-builder-main/src/lib/ai-tools.server.ts	2026-06-04 03:09:33.369089451 +0000
+@@ -633,6 +633,62 @@
+   }
+ }
+ 
++// Legacy free-model search — the SAME proven endpoint the website's Toolbox
++// browse page uses. apis.roblox.com/toolbox-service is flaky/region-gated and
++// often returns nothing, which is what leaves the map as empty folders. This
++// fallback reliably returns real free Models/Decals/Audio/Meshes the plugin can
++// load via game:GetObjects.
++const LEGACY_SEARCH = "https://search.roblox.com/catalog/json";
++const LEGACY_CAT: Record<string, number> = {
++  Models: 6,
++  Decals: 13,
++  Audio: 9,
++  Meshes: 40,
++  Animations: 24,
++  Plugins: 38,
++  All: 6,
++};
++async function legacyAssetSearch(
++  query: string,
++  category: string,
++  limit: number,
++  freeOnly: boolean,
++): Promise<any[]> {
++  const cat = LEGACY_CAT[category] ?? LEGACY_CAT.Models;
++  try {
++    const params = new URLSearchParams({
++      Category: String(cat),
++      Keyword: query,
++      ResultsPerPage: String(Math.min(Math.max(limit * 3, 20), 60)),
++      PageNumber: "1",
++      SortType: "0",
++      IncludeNotForSale: "false",
++    });
++    const r = await fetch(`${LEGACY_SEARCH}?${params.toString()}`, { headers: RBX_HEADERS });
++    if (!r.ok) return [];
++    const raw = (await r.json()) as any;
++    const arr = Array.isArray(raw) ? raw : [];
++    let items = arr
++      .map((a: any) => ({
++        assetId: a.AssetId,
++        name: (a.Name as string)?.trim() || `Asset ${a.AssetId}`,
++        creator: a.Creator ?? "",
++        verified: false,
++        assetType: a.AssetTypeId,
++        price: a.PriceInRobux ?? a.BestPrice ?? 0,
++        isForSale: true,
++        favorites: a.FavoriteCount ?? 0,
++        upVotePercent: a.UpVotePercent ?? 0,
++        voteCount: a.VoteCount ?? 0,
++      }))
++      .filter((i: any) => typeof i.assetId === "number");
++    if (freeOnly) items = items.filter((i: any) => (i.price ?? 0) === 0);
++    return items;
++  } catch {
++    return [];
++  }
++}
++
+ export async function searchRobloxAssets(
+   query: string,
+   category: string,
+@@ -648,36 +704,43 @@
+       const fetchLimit = Math.min(30, Math.max(limit * 4, 20));
+       const url = `https://apis.roblox.com/toolbox-service/v1/marketplace/${toolboxCat}?keyword=${encodeURIComponent(query)}&limit=${fetchLimit}`;
+       const r = await fetch(url, { headers: RBX_HEADERS });
+-      if (!r.ok) return [];
+-      const j: any = await r.json();
+-      const ids: number[] = (j.data ?? [])
+-        .map((x: any) => x.id)
+-        .filter((n: any) => typeof n === "number");
+-      if (ids.length === 0) return [];
+-      const detailIds = ids.slice(0, Math.min(ids.length, 20));
+-      let enriched = await batchToolboxDetails(detailIds);
+-      // Final safety net: if detail enrichment failed entirely, still return
+-      // bare ids so the AI can queue an insert. Roblox InsertService will
+-      // succeed for any free model regardless of metadata.
+-      if (enriched.length === 0) {
+-        enriched = detailIds.map((id) => ({
+-          assetId: id,
+-          name: `Asset ${id}`,
+-          creator: "",
+-          verified: false,
+-          price: 0,
+-          isForSale: true,
+-          upVotePercent: 0,
+-          voteCount: 0,
+-        }));
++      const ids: number[] = r.ok
++        ? ((await r.json()) as any).data
++            ?.map((x: any) => x.id)
++            .filter((n: any) => typeof n === "number") ?? []
++        : [];
++      if (ids.length > 0) {
++        const detailIds = ids.slice(0, Math.min(ids.length, 20));
++        let enriched = await batchToolboxDetails(detailIds);
++        // Final safety net: if detail enrichment failed entirely, still return
++        // bare ids so the AI can queue an insert. Roblox InsertService will
++        // succeed for any free model regardless of metadata.
++        if (enriched.length === 0) {
++          enriched = detailIds.map((id) => ({
++            assetId: id,
++            name: `Asset ${id}`,
++            creator: "",
++            verified: false,
++            price: 0,
++            isForSale: true,
++            upVotePercent: 0,
++            voteCount: 0,
++          }));
++        }
++        let items = enriched;
++        if (freeOnly) items = items.filter((i) => (i.price ?? 0) === 0);
++        if (verifiedOnly) items = items.filter((i) => i.verified === true);
++        const ranked = dedupeAndRankAssets(items, query, limit);
++        if (ranked.length > 0) return ranked;
+       }
+-      let items = enriched;
+-      if (freeOnly) items = items.filter((i) => (i.price ?? 0) === 0);
+-      if (verifiedOnly) items = items.filter((i) => i.verified === true);
+-      return dedupeAndRankAssets(items, query, limit);
++      // toolbox-service returned nothing usable — fall through to legacy.
+     } catch {
+-      return [];
++      // fall through to legacy
+     }
++    // Reliable fallback: the same endpoint the website's browse page uses.
++    let legacy = await legacyAssetSearch(query, category, limit, freeOnly);
++    if (verifiedOnly) legacy = legacy.filter((i: any) => i.verified === true);
++    return dedupeAndRankAssets(legacy, query, limit);
+   }
+ 
+   try {

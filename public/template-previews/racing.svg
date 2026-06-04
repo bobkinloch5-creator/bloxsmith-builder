@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-label="Racing preview">
+  <rect width="640" height="360" fill="#06202a"/><path d="M50 280c110-170 270-170 540-95" fill="none" stroke="#e5e7eb" stroke-width="78" stroke-linecap="round"/><path d="M50 280c110-170 270-170 540-95" fill="none" stroke="#111827" stroke-width="54" stroke-linecap="round" stroke-dasharray="28 28"/>
+  <rect x="220" y="197" width="86" height="44" rx="12" fill="#ef4444"/><rect x="345" y="146" width="86" height="44" rx="12" fill="#38bdf8"/>
+  <text x="62" y="58" fill="#fff" font-family="Arial" font-size="36" font-weight="700">Kart Circuit</text>
+</svg>

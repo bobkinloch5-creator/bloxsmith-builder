@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-label="Tycoon preview">
+  <rect width="640" height="360" fill="#07111f"/><rect x="42" y="250" width="556" height="64" rx="18" fill="#12342d"/><rect x="110" y="94" width="100" height="145" fill="#22c55e"/><rect x="250" y="58" width="138" height="181" fill="#38bdf8"/><rect x="430" y="124" width="96" height="115" fill="#f59e0b"/>
+  <circle cx="133" cy="277" r="18" fill="#fbbf24"/><circle cx="291" cy="277" r="18" fill="#fbbf24"/><circle cx="457" cy="277" r="18" fill="#fbbf24"/>
+  <text x="66" y="50" fill="#fff" font-family="Arial" font-size="34" font-weight="700">Factory Tycoon</text>
+</svg>

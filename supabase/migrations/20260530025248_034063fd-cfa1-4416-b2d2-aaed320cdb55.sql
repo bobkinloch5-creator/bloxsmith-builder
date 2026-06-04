@@ -1,0 +1,2 @@
+ALTER PUBLICATION supabase_realtime ADD TABLE public.user_achievements;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.user_levels;

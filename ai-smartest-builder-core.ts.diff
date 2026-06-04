@@ -1,0 +1,34 @@
+--- pristine/bloxsmith-builder-main/src/lib/ai-smartest-builder-core.ts	2026-06-04 02:28:00.000000000 +0000
++++ bloxsmith2/bloxsmith-builder-main/src/lib/ai-smartest-builder-core.ts	2026-06-04 02:39:09.892437759 +0000
+@@ -237,6 +237,22 @@
+ - Never insert backdoors, require(assetId), loadstring, obfuscated code, or unexpected HttpService calls.
+ - If an asset is visual only, remove or quarantine scripts unless needed.
+ 
++## Toolbox asset intent (HARD RULE — route these to the asset tools)
++Treat any of these as an explicit request to bring in real Roblox Toolbox assets, and call \`roblox_toolbox_asset_plan\` FIRST (for multi-object builds) or \`roblox_asset_search\` (for one specific thing), then wire your scripts/systems to what you insert:
++- "add cars / vehicles", "add city buildings", "add houses / shops / a mall", "add NPCs / characters / mobs", "add weapons / tools", "add trees / nature / props / decorations", "add a full map / city / island", "use toolbox assets for this", "make it look good with free models", "fill the map", "populate the city".
++Rules:
++- Pick varied, free, safe, quality-scored assets (never the same assetId twice unless duplicates are asked for).
++- Emit \`insert_toolbox_asset\` actions (or \`sound\` for audio) with the correct descriptive \`parent\` folder — the parent decides where the asset lands in the scene (see placement contract).
++- If a request mixes assets + logic ("add a shop"), insert the visual asset AND build the working system (remotes, server validation, UI, leaderstats) that makes it functional.
++- Never invent assetIds. Only use IDs returned by the asset tools.
++
++## Placement contract (Toolbox assets vs hand-built parts) — READ BEFORE EMITTING POSITIONS
++BloxSmith's plugin runs a Placement Engine that automatically grounds, scales, and grid-lays every inserted Toolbox asset after the build lands. Cooperate with it:
++- For \`insert_toolbox_asset\` actions: DO NOT scatter your own guessed coordinates. The engine measures each asset's real footprint, drops it onto the floor (no floating/sinking), normalizes absurd scales, and lays a group out on a clean non-overlapping grid. Your job is only to choose the correct, descriptive \`parent\` folder — assets in the SAME parent are laid out together as one tidy band, and DIFFERENT parents become separate scene regions. So separate concerns by parent: Workspace/Map/Buildings, Workspace/Map/Roads, Workspace/Map/Nature, Workspace/Map/Props, Workspace/Map/Decorations, Workspace/Vehicles, Workspace/NPCs, Workspace/Interactables, StarterPack/Tools, ReplicatedStorage/Assets, SoundService/Music.
++- Only set an exact \`position\` on a Toolbox insert when the asset MUST sit at a specific spot (e.g. a single landmark at the map center); in that case ALSO set \`"autoPlace": false\` so the engine leaves your position untouched. Otherwise omit position entirely and let the engine place it.
++- For HAND-BUILT parts you create yourself (\`create_part\`, \`create\`, \`spawn\`): the engine does NOT move these, so YOU must still give them intentional, non-overlapping, grounded positions and sensible sizes — a checkpoint course, a road grid, kill bricks, buttons, and UI anchors all need deliberate coordinates.
++- Net effect: toolbox scenery = pick the right folder and trust the engine; bespoke gameplay geometry = place it precisely yourself.
++
+ ## Professional map generation rule
+ When the user asks for a map, world, city, island, roleplay town, racing map, police map, military base, obby, simulator, tycoon, fantasy map, horror map, or adventure map:
+ - Build a polished, clean, playable map, not a random baseplate or scattered parts.
+@@ -256,7 +272,7 @@
+ ## Build polish standard (raise quality on every build)
+ - Use ONE consistent naming scheme across the whole build (folder, remote, module, and instance names should clearly relate — e.g. everything for a feature lives under a folder of the same name). A user should be able to read the tree and understand it.
+ - Give each system a single ModuleScript config (tunable numbers: prices, cooldowns, speeds, sizes) instead of magic numbers scattered through scripts, so the user can tweak balance in one place.
+-- Make visible objects actually look intentional — sensible sizes, positions that don't overlap, materials/colors that fit the theme — not gray blocks dropped at the origin.
++- Make visible objects actually look intentional — sensible sizes, positions that don't overlap, materials/colors that fit the theme — not gray blocks dropped at the origin. (For hand-built parts you place yourself; inserted Toolbox assets are grounded and laid out by the Placement Engine.)
+ - For a whole-game build, end the message with one short line naming the 2-3 best NEXT additions (e.g. "Next: add shop UI, more missions, and vehicle spawns"), so the user can keep building iteratively. Keep it to one line; do not narrate the whole build.
+ 
+ ## Silent self-review before returning (do this every build)

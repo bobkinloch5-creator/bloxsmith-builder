@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <filter id="halo" x="-45%" y="-80%" width="190%" height="260%">
+      <feGaussianBlur stdDeviation="3" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <ellipse cx="64" cy="64" rx="51" ry="18" fill="none" stroke="#fde68a" stroke-width="11" filter="url(#halo)"/>
+  <ellipse cx="64" cy="64" rx="38" ry="10" fill="none" stroke="#fff7cc" stroke-width="4"/>
+</svg>

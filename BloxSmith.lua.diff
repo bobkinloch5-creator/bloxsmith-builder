@@ -1,0 +1,455 @@
+--- pristine/bloxsmith-builder-main/public/BloxSmith.lua	2026-06-04 02:28:00.000000000 +0000
++++ bloxsmith2/bloxsmith-builder-main/public/BloxSmith.lua	2026-06-04 03:11:43.139143259 +0000
+@@ -1354,17 +1354,42 @@
+ 	end
+ end
+ 
++-- Previously this PRE-CREATED Workspace/Map/{Buildings,Roads,Trees,Props,Zones},
++-- NPCs, Interactables, GeneratedAssets up front — which is exactly why a build
++-- that inserted nothing (or whose Toolbox inserts failed) left a tree of EMPTY
++-- folders. We no longer create folders speculatively: resolvePath() makes a
++-- parent folder on demand only when something is actually placed in it, and
++-- pruneEmptyBloxFolders() removes any that ended up empty. Returns the existing
++-- Map folder if there is one, otherwise nil.
+ local function ensureMapStructureIfNeeded()
+-	local map = ensurePath("Workspace/Map")
+-	ensurePath("Workspace/Map/Buildings")
+-	ensurePath("Workspace/Map/Roads")
+-	ensurePath("Workspace/Map/Trees")
+-	ensurePath("Workspace/Map/Props")
+-	ensurePath("Workspace/Map/Zones")
+-	ensurePath("Workspace/Interactables")
+-	ensurePath("Workspace/NPCs")
+-	ensurePath("Workspace/GeneratedAssets")
+-	return map
++	return Workspace:FindFirstChild("Map")
++end
++
++-- Remove any BloxSmith organizational Folder that ended up with no children.
++-- Post-order traversal cleans leaves first, so a parent (e.g. Map) that becomes
++-- empty after its subfolders are pruned is removed in the same pass. This is
++-- the safety net that prevents "blank folders" no matter why an insert failed.
++local function pruneEmptyBloxFolders()
++	-- BloxSmith's organizational folder names — safe to remove when left empty.
++	local ORG = {
++		["Map"]=true, ["Buildings"]=true, ["Roads"]=true, ["Trees"]=true, ["Props"]=true,
++		["Zones"]=true, ["Decorations"]=true, ["Nature"]=true, ["Vehicles"]=true,
++		["NPCs"]=true, ["Interactables"]=true, ["GeneratedAssets"]=true, ["Landmarks"]=true,
++		["Beach"]=true, ["Police"]=true, ["Track"]=true, ["Obby"]=true, ["Checkpoints"]=true,
++		["Hazards"]=true, ["Tycoon"]=true, ["ToolboxMap"]=true, ["Currency"]=true,
++		["Upgrades"]=true, ["TycoonButtons"]=true,
++	}
++	local function visit(parent)
++		for _, c in ipairs(parent:GetChildren()) do
++			if c:IsA("Folder") then
++				visit(c)
++				if ORG[c.Name] and #c:GetChildren() == 0 then
++					pcall(function() c:Destroy() end)
++				end
++			end
++		end
++	end
++	pcall(function() visit(Workspace) end)
+ end
+ 
+ local function isWorldBuildAction(a)
+@@ -1394,7 +1419,10 @@
+ end
+ 
+ local function ensurePersistentWorldAfterInsert(createdInstances)
+-	local map = ensureMapStructureIfNeeded()
++	-- Don't force a Map folder into existence; place the spawn at the top of
++	-- Workspace (or inside Map only if one already exists with content).
++	local existingMap = Workspace:FindFirstChild("Map")
++	local spawnParent = (existingMap and #existingMap:GetChildren() > 0) and existingMap or Workspace
+ 	local center = Vector3.new(0, 6, 0)
+ 	for _, inst in ipairs(createdInstances or {}) do
+ 		local pos = getInstanceCenter(inst)
+@@ -1411,16 +1439,315 @@
+ 		spawn.AllowTeamChangeOnTouch = false
+ 		spawn.Material = Enum.Material.Neon
+ 		spawn.BrickColor = BrickColor.new("Electric blue")
+-		spawn.Parent = map
++		spawn.Parent = spawnParent
+ 	end
+ 	if spawn.Position.Y < 3 then
+ 		spawn.CFrame = CFrame.new(center)
+ 	end
+ 	for _, inst in ipairs(createdInstances or {}) do stabilizeGeneratedInstance(inst) end
++	-- Final cleanup: drop any organizational folder that ended up empty so the
++	-- user never sees a tree of blank Buildings/Roads/Props/Zones folders.
++	pruneEmptyBloxFolders()
+ 	return spawn
+ end
+ 
+ -- Create or overwrite a script (legacy file sync)
++-- [BloxSmith Placement Engine — injected]
++-- ===========================================================================
++-- BloxSmith Placement Engine
++-- ---------------------------------------------------------------------------
++-- Turns "a pile of inserted Toolbox models" into a clean, playable scene:
++--   * measures each asset's REAL footprint from its bounding box
++--   * normalizes absurd scales (giant or microscopic exports) to a sane band
++--   * lays assets out on a non-overlapping grid (no overlaps, no random gaps)
++--   * grounds every asset on the actual floor (baseplate / terrain / designed
++--     ground) via a downward raycast — no more floating or sunken models
++--   * anchors static scenery so it never falls apart or drifts in Play mode
++--
++-- Pure Roblox API, fully pcall-guarded, written in Lua-5.x-compatible style
++-- (no +=, continue, or type annotations) so it parses everywhere and runs
++-- unchanged under Luau. Only ever repositions instances tagged BloxAutoPlace,
++-- so hand-authored parts the AI placed on purpose are never disturbed.
++-- ===========================================================================
++
++local Workspace = game:GetService("Workspace")
++
++local BloxPlacement = {}
++do
++-- Tunables -----------------------------------------------------------------
++local GAP            = 6      -- studs of breathing room between assets
++local GROUP_GAP      = 16     -- studs between whole groups (buildings vs roads)
++local MAX_ROW_WIDTH  = 220    -- wrap a row of assets after this many studs
++local MAX_FOOTPRINT  = 300    -- anything wider than this is treated as oversized
++local MIN_FOOTPRINT  = 0.75   -- anything smaller than this is treated as a speck
++local TARGET_BIG     = 80     -- normalize giants down so their footprint ~= this
++local TARGET_SMALL   = 4      -- normalize specks up so their footprint ~= this
++local RAY_TOP        = 5000   -- start grounding ray from this height
++local RAY_LEN        = 10000  -- and shoot this far down
++local GROUND_EPSILON = 0.05   -- tiny lift so colliders don't z-fight the floor
++
++-- Parents whose contents are static scenery (safe to anchor & grid-pack).
++local STATIC_HINTS = {
++	"map", "build", "road", "street", "prop", "decor", "tree", "nature",
++	"zone", "track", "obby", "checkpoint", "landmark", "beach", "tycoon",
++	"hazard", "city", "world", "environment", "scenery", "furniture",
++}
++-- Parents whose contents are dynamic (ground them, but never anchor/grid-pack).
++local DYNAMIC_HINTS = {
++	"vehicle", "car", "npc", "character", "pet", "tool", "weapon", "mob", "enemy",
++}
++
++local function lower(s)
++	return string.lower(tostring(s or ""))
++end
++
++local function pathContainsAny(text, list)
++	local hay = lower(text)
++	for _, kw in ipairs(list) do
++		if string.find(hay, kw, 1, true) then return true end
++	end
++	return false
++end
++
++local function fullName(inst)
++	local ok, name = pcall(function() return inst:GetFullName() end)
++	if ok then return name end
++	return tostring(inst and inst.Name or "")
++end
++
++local function isDynamicParent(parent)
++	local name = parent and fullName(parent) or ""
++	if pathContainsAny(name, DYNAMIC_HINTS) then return true end
++	-- A model that owns a Humanoid is dynamic regardless of where it lives.
++	return false
++end
++
++local function isStaticParent(parent)
++	local name = parent and fullName(parent) or ""
++	if isDynamicParent(parent) then return false end
++	if pathContainsAny(name, STATIC_HINTS) then return true end
++	-- Default to static — most Toolbox inserts are scenery.
++	return true
++end
++
++local function modelHasHumanoid(inst)
++	if not inst or not inst.IsA then return false end
++	if inst:IsA("Model") then
++		return inst:FindFirstChildWhichIsA("Humanoid", true) ~= nil
++	end
++	return false
++end
++
++-- Measure world-space bounding box. Returns (centerVector3, sizeVector3) or nil.
++function BloxPlacement.measure(inst)
++	if not inst then return nil, nil end
++	if inst:IsA("Model") then
++		local ok, cf, size = pcall(function() return inst:GetBoundingBox() end)
++		if ok and cf and size and size.Magnitude > 0.001 then
++			return cf.Position, size
++		end
++		-- Manual fallback if GetBoundingBox is unhappy.
++		local minV, maxV
++		for _, d in ipairs(inst:GetDescendants()) do
++			if d:IsA("BasePart") then
++				local p = d.Position
++				local h = d.Size * 0.5
++				local lo = p - h
++				local hi = p + h
++				if not minV then minV, maxV = lo, hi else
++					minV = Vector3.new(math.min(minV.X, lo.X), math.min(minV.Y, lo.Y), math.min(minV.Z, lo.Z))
++					maxV = Vector3.new(math.max(maxV.X, hi.X), math.max(maxV.Y, hi.Y), math.max(maxV.Z, hi.Z))
++				end
++			end
++		end
++		if minV and maxV then
++			return (minV + maxV) * 0.5, (maxV - minV)
++		end
++		return nil, nil
++	elseif inst:IsA("BasePart") then
++		return inst.Position, inst.Size
++	end
++	return nil, nil
++end
++
++-- Footprint = the larger of the two horizontal dimensions.
++local function footprintOf(size)
++	if not size then return 8 end
++	return math.max(size.X, size.Z)
++end
++
++-- Move an instance so its bounding-box center lands exactly at worldCenter.
++local function recenterTo(inst, currentCenter, worldCenter)
++	if not inst or not currentCenter or not worldCenter then return end
++	local delta = worldCenter - currentCenter
++	if inst:IsA("Model") then
++		local ok, pivot = pcall(function() return inst:GetPivot() end)
++		if ok and pivot then
++			pcall(function() inst:PivotTo(pivot + delta) end)
++		end
++	elseif inst:IsA("BasePart") then
++		pcall(function() inst.CFrame = inst.CFrame + delta end)
++	end
++end
++
++-- Normalize wildly mis-scaled assets into a sane size band. Conservative:
++-- only touches true outliers so intentionally large/small builds survive.
++function BloxPlacement.normalizeScale(inst)
++	local _, size = BloxPlacement.measure(inst)
++	if not size then return end
++	local fp = footprintOf(size)
++	if fp <= 0 then return end
++	local factor = nil
++	if fp > MAX_FOOTPRINT then
++		factor = TARGET_BIG / fp
++	elseif fp < MIN_FOOTPRINT then
++		factor = TARGET_SMALL / fp
++	end
++	if not factor or factor == 1 then return end
++	if inst:IsA("Model") then
++		pcall(function()
++			local cur = 1
++			local okScale, s = pcall(function() return inst:GetScale() end)
++			if okScale and type(s) == "number" and s > 0 then cur = s end
++			inst:ScaleTo(cur * factor)
++		end)
++	elseif inst:IsA("BasePart") then
++		pcall(function() inst.Size = inst.Size * factor end)
++	end
++end
++
++-- Raycast straight down at (x, z), ignoring everything in ignoreList, to find
++-- the floor height. Returns a Y value (defaults to 0 over empty space).
++function BloxPlacement.floorY(x, z, ignoreList)
++	local params = RaycastParams.new()
++	params.FilterType = Enum.RaycastFilterType.Exclude
++	params.FilterDescendantsInstances = ignoreList or {}
++	params.IgnoreWater = false
++	local origin = Vector3.new(x, RAY_TOP, z)
++	local dir = Vector3.new(0, -RAY_LEN, 0)
++	local ok, result = pcall(function() return Workspace:Raycast(origin, dir, params) end)
++	if ok and result then
++		return result.Position.Y
++	end
++	return 0
++end
++
++-- Drop a single instance onto the floor at (x, z) so its base rests on top.
++function BloxPlacement.groundAt(inst, x, z, ignoreList)
++	local center, size = BloxPlacement.measure(inst)
++	if not center or not size then return end
++	local gy = BloxPlacement.floorY(x, z, ignoreList)
++	local targetCenter = Vector3.new(x, gy + size.Y * 0.5 + GROUND_EPSILON, z)
++	recenterTo(inst, center, targetCenter)
++end
++
++-- Anchor every BasePart in a static asset so scenery never collapses or drifts.
++local function anchorStatic(inst)
++	if not inst then return end
++	if inst:IsA("BasePart") then
++		pcall(function() inst.Anchored = true end)
++	elseif inst:IsA("Model") or inst:IsA("Folder") then
++		for _, d in ipairs(inst:GetDescendants()) do
++			if d:IsA("BasePart") then pcall(function() d.Anchored = true end) end
++		end
++	end
++end
++
++-- Shelf-pack a list of items into a centered grid. Returns local XZ offsets and
++-- the overall packed size so groups can later be tiled without overlapping.
++local function packGrid(items)
++	local cells = {}
++	local cursorX, cursorZ, rowDepth, packW, packD = 0, 0, 0, 0, 0
++	for _, item in ipairs(items) do
++		local fp = footprintOf(item.size)
++		local cellW = fp + GAP
++		local cellD = math.max(item.size.Z, fp) + GAP
++		if cursorX > 0 and (cursorX + cellW) > MAX_ROW_WIDTH then
++			cursorZ = cursorZ + rowDepth
++			cursorX = 0
++			rowDepth = 0
++		end
++		cells[#cells + 1] = {
++			item = item,
++			x = cursorX + cellW * 0.5,
++			z = cursorZ + cellD * 0.5,
++		}
++		cursorX = cursorX + cellW
++		if cellD > rowDepth then rowDepth = cellD end
++		if cursorX > packW then packW = cursorX end
++		if (cursorZ + rowDepth) > packD then packD = cursorZ + rowDepth end
++	end
++	-- Center the whole pack around (0,0).
++	for _, c in ipairs(cells) do
++		c.x = c.x - packW * 0.5
++		c.z = c.z - packD * 0.5
++	end
++	return cells, packW, packD
++end
++
++-- Lay out one parent's worth of freshly inserted assets at a given world origin.
++function BloxPlacement.layoutGroup(parent, instances, originX, originZ, ignoreList)
++	local items = {}
++	for _, inst in ipairs(instances) do
++		if inst and inst.Parent and (inst:IsA("Model") or inst:IsA("BasePart")) then
++			BloxPlacement.normalizeScale(inst)
++			local _, size = BloxPlacement.measure(inst)
++			if size then
++				items[#items + 1] = { inst = inst, size = size }
++			end
++		end
++	end
++	if #items == 0 then return 0, 0 end
++
++	local static = isStaticParent(parent)
++	local cells, packW, packD = packGrid(items)
++	for _, c in ipairs(cells) do
++		local x = originX + c.x
++		local z = originZ + c.z
++		BloxPlacement.groundAt(c.item.inst, x, z, ignoreList)
++		if static and not modelHasHumanoid(c.item.inst) then
++			anchorStatic(c.item.inst)
++		end
++	end
++	return packW, packD
++end
++
++-- Top-level entry: take every BloxAutoPlace instance created this build, group
++-- by parent, tile the groups so they never overlap each other, and place each.
++function BloxPlacement.arrange(taggedInstances)
++	if not taggedInstances or #taggedInstances == 0 then return end
++
++	-- Build the shared ignore list once: assets should ground on the world,
++	-- not on each other.
++	local ignore = {}
++	for _, inst in ipairs(taggedInstances) do
++		if inst and inst.Parent then ignore[#ignore + 1] = inst end
++	end
++
++	-- Group by parent.
++	local order = {}
++	local byParent = {}
++	for _, inst in ipairs(taggedInstances) do
++		if inst and inst.Parent then
++			local key = inst.Parent
++			if not byParent[key] then
++				byParent[key] = {}
++				order[#order + 1] = key
++			end
++			local list = byParent[key]
++			list[#list + 1] = inst
++		end
++	end
++
++	-- Tile groups along Z so Buildings / Roads / Vehicles occupy distinct bands.
++	local cursorZ = 0
++	for _, parent in ipairs(order) do
++		local _, packD = BloxPlacement.layoutGroup(parent, byParent[parent], 0, cursorZ, ignore)
++		cursorZ = cursorZ + packD + GROUP_GAP
++	end
++end
++end
++
+ function Actions.script(a)
+ 	normalizePersistentParent(a)
+ 	local parent = resolvePath(a.parent or a.service_location or "ServerScriptService", true)
+@@ -1760,11 +2087,16 @@
+ 	end
+ 	model:Destroy()
+ 	local placed = (typeof(targetParent) == "Instance" and targetParent ~= parent) and targetParent or moved[1]
+-	if a.position and placed and placed:IsA("Model") then
+-		local pos = asVector3(a.position)
+-		placed:PivotTo(CFrame.new(pos))
+-	elseif a.position and placed and placed:IsA("BasePart") then
++	-- Placement contract: the Placement Engine owns layout by default — it
++	-- grounds, scales, and grid-lays the asset after the batch lands so nothing
++	-- floats, sinks, or overlaps. A caller only keeps an exact position when it
++	-- explicitly opts out with autoPlace == false.
++	if a.autoPlace == false and a.position and placed and placed:IsA("Model") then
++		placed:PivotTo(CFrame.new(asVector3(a.position)))
++	elseif a.autoPlace == false and a.position and placed and placed:IsA("BasePart") then
+ 		placed.CFrame = CFrame.new(asVector3(a.position))
++	elseif placed then
++		pcall(function() placed:SetAttribute("BloxAutoPlace", true) end)
+ 	end
+ 	if placed then stabilizeGeneratedInstance(placed) end
+ 	return true, nil, placed
+@@ -1878,13 +2210,18 @@
+ 	model:Destroy()
+ 
+ 	local placed = (typeof(targetParent) == "Instance" and targetParent ~= parent) and targetParent or moved[1]
+-	if a.position and placed then
++	-- Placement contract: the Placement Engine owns layout by default (grounds,
++	-- scales, grid-lays after the batch). Exact position is honored only when the
++	-- caller explicitly sets autoPlace == false.
++	if a.autoPlace == false and a.position and placed then
+ 		local pos = asVector3(a.position)
+ 		if placed:IsA("Model") then
+ 			placed:PivotTo(CFrame.new(pos))
+ 		elseif placed:IsA("BasePart") then
+ 			placed.CFrame = CFrame.new(pos)
+ 		end
++	elseif placed then
++		pcall(function() placed:SetAttribute("BloxAutoPlace", true) end)
+ 	end
+ 
+ 	task.defer(pushSnapshot)
+@@ -2505,6 +2842,29 @@
+ 		pcall(function() postJSON("/report", { reports = reports }) end)
+ 	end
+ 
++	-- Placement Engine: ground, scale, and grid-lay every auto-placed Toolbox
++	-- asset from this batch so the scene lands clean — no floating, sinking,
++	-- mis-scaled, or overlapping models. Runs inside the same undo recording so
++	-- the user can revert the whole build (insert + layout) in one Ctrl+Z.
++	do
++		local autoPlaced = {}
++		for _, inst in ipairs(createdInstances) do
++			if inst and inst.Parent then
++				local okAttr, flag = pcall(function() return inst:GetAttribute("BloxAutoPlace") end)
++				if okAttr and flag == true then
++					autoPlaced[#autoPlaced + 1] = inst
++				end
++			end
++		end
++		if #autoPlaced > 0 then
++			pcall(function() BloxPlacement.arrange(autoPlaced) end)
++			for _, inst in ipairs(autoPlaced) do
++				pcall(function() inst:SetAttribute("BloxAutoPlace", nil) end)
++			end
++			appendLog(("Placement Engine arranged %d Toolbox asset(s): grounded, scaled, and laid out cleanly."):format(#autoPlaced))
++		end
++	end
++
+ 	if recordingId then
+ 		pcall(function() ChangeHistoryService:FinishRecording(recordingId, Enum.FinishRecordingOperation.Commit) end)
+ 	else

@@ -1,0 +1,2 @@
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS profile_decoration text NOT NULL DEFAULT 'none';
+ALTER TABLE public.profiles ADD CONSTRAINT profiles_decoration_valid CHECK (profile_decoration ~ '^[a-z0-9_-]{1,32}$');

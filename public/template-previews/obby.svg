@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-label="Lava obby preview">
+  <rect width="640" height="360" fill="#111827"/><rect y="255" width="640" height="105" fill="#ff6b00"/><path d="M0 302c80-40 160 45 250 0s160-40 390 8v50H0z" fill="#facc15" opacity=".7"/>
+  <g transform="translate(55 80)"><rect width="90" height="42" rx="8" fill="#38bdf8"/><rect x="130" y="55" width="95" height="42" rx="8" fill="#f472b6"/><rect x="270" y="10" width="100" height="42" rx="8" fill="#34d399"/><rect x="420" y="70" width="120" height="42" rx="8" fill="#a78bfa"/></g>
+  <text x="62" y="52" fill="#fff" font-family="Arial" font-size="36" font-weight="700">Checkpoint Obby</text>
+</svg>

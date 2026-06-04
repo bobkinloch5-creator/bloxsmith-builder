@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-label="City roleplay preview">
+  <rect width="640" height="360" fill="#08111f"/><rect x="75" y="92" width="110" height="190" fill="#38bdf8"/><rect x="230" y="50" width="140" height="232" fill="#14b8a6"/><rect x="415" y="122" width="110" height="160" fill="#f59e0b"/>
+  <rect y="282" width="640" height="78" fill="#111827"/><path d="M315 282v78" stroke="#facc15" stroke-width="8" stroke-dasharray="18 18"/>
+  <text x="60" y="44" fill="#fff" font-family="Arial" font-size="34" font-weight="700">City Roleplay</text>
+</svg>

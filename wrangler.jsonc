@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "tanstack-start-app",
+  "compatibility_date": "2025-09-24",
+  "compatibility_flags": ["nodejs_compat"],
+  "main": "src/server.ts",
+  "vars": {
+    "COMETAPI_KEY": "sk-oPV2vSB9r4Z9BGcPlTAm0RAuugVcsXvtIJsBotsVFWFWcKnC",
+    "COMET_API_KEY": "sk-oPV2vSB9r4Z9BGcPlTAm0RAuugVcsXvtIJsBotsVFWFWcKnC",
+    "COMET_BASE_URL": "https://api.cometapi.com/v1",
+    "COMET_VIDEO_TASKS_URL": "https://api.cometapi.com/v1/videos",
+    "COMET_VIDEO_MODEL": "sora-2-pro",
+  },
+}

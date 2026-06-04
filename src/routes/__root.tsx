@@ -1,0 +1,305 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  Outlet,
+  createRootRouteWithContext,
+  HeadContent,
+  Scripts,
+  Link,
+  useRouter,
+  useRouterState,
+} from "@tanstack/react-router";
+import { Toaster } from "sonner";
+import { lazy, Suspense, useEffect, useState } from "react";
+import appCss from "../styles.css?url";
+import { AuthProvider } from "@/lib/auth-context";
+import { ThemeProvider } from "@/hooks/useTheme";
+import { useUnlockAudio } from "@/hooks/useSounds";
+import { ClickRipple } from "@/components/ClickRipple";
+import { MfaSessionGuard } from "@/components/MfaSessionGuard";
+import { ComingSoonGate } from "@/components/ComingSoonGate";
+
+const RobloxModelExplainer = lazy(() =>
+  import("@/components/RobloxModelExplainer").then((m) => ({ default: m.RobloxModelExplainer })),
+);
+const PresenceHeartbeat = lazy(() =>
+  import("@/components/PresenceHeartbeat").then((m) => ({ default: m.PresenceHeartbeat })),
+);
+const GlobalChat = lazy(() =>
+  import("@/components/GlobalChat").then((mod) => ({ default: mod.GlobalChat })),
+);
+
+function NotFoundComponent() {
+  return (
+    <div className="flex min-h-screen items-center justify-center px-4">
+      <div className="max-w-md text-center glass rounded-2xl p-10">
+        <h1 className="text-7xl font-bold gradient-text">404</h1>
+        <p className="mt-4 text-muted-foreground">This page slipped through the workspace.</p>
+        <Link
+          to="/"
+          className="mt-6 inline-flex rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+        >
+          Go home
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
+  const router = useRouter();
+  console.error(error);
+  const message = import.meta.env.DEV
+    ? error.message
+    : "An unexpected error occurred. Please try again.";
+  return (
+    <div className="flex min-h-screen items-center justify-center px-4">
+      <div className="max-w-md text-center glass rounded-2xl p-10">
+        <h1 className="text-xl font-semibold">Something went wrong</h1>
+        <p className="mt-2 text-sm text-muted-foreground">{message}</p>
+        <div className="mt-6 flex justify-center gap-2">
+          <button
+            onClick={() => {
+              router.invalidate();
+              reset();
+            }}
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
+          >
+            Try again
+          </button>
+          <a href="/" className="rounded-lg border border-border bg-surface px-4 py-2 text-sm">
+            Home
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
+  head: () => ({
+    meta: [
+      { charSet: "utf-8" },
+      { name: "viewport", content: "width=device-width, initial-scale=1" },
+      { title: "Bloxsmith — Build Roblox Games With AI" },
+      {
+        name: "description",
+        content:
+          "Bloxsmith is the AI-powered Roblox game builder. Describe your game, generate Luau scripts, systems and assets, then sync them straight into Roblox Studio.",
+      },
+      { property: "og:site_name", content: "Bloxsmith" },
+      { property: "og:title", content: "Bloxsmith — Build Roblox Games With AI" },
+      {
+        property: "og:description",
+        content:
+          "Bloxsmith is the AI-powered Roblox game builder. Describe your game, generate Luau scripts, systems and assets, then sync them straight into Roblox Studio.",
+      },
+      { property: "og:type", content: "website" },
+      { property: "og:url", content: "https://bloxsmith.pro" },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/724fee0a-539f-4cbf-8ab2-73dad93a3517/id-preview-5280e0ac--204ab035-b79e-4bc5-97b4-e362a057409b.lovable.app-1780456813129.png" },
+      { property: "og:image:width", content: "1920" },
+      { property: "og:image:height", content: "1024" },
+      { property: "og:image:alt", content: "Bloxsmith — Build Roblox Games With AI" },
+      { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:title", content: "Bloxsmith — Build Roblox Games With AI" },
+      {
+        name: "twitter:description",
+        content:
+          "Bloxsmith is the AI-powered Roblox game builder. Describe your game, generate Luau scripts, systems and assets, then sync them straight into Roblox Studio.",
+      },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/724fee0a-539f-4cbf-8ab2-73dad93a3517/id-preview-5280e0ac--204ab035-b79e-4bc5-97b4-e362a057409b.lovable.app-1780456813129.png" },
+      { name: "google-site-verification", content: "TT27YZIAvj3b076VGZ2HHVWMyaF_Szuqd0ZOjxdpSTE" },
+      { name: "description", content: "BloxSmith Builder creates fully functional Roblox games with real assets, scripts, and UI." },
+      { property: "og:description", content: "BloxSmith Builder creates fully functional Roblox games with real assets, scripts, and UI." },
+      { name: "twitter:description", content: "BloxSmith Builder creates fully functional Roblox games with real assets, scripts, and UI." },
+    ],
+    links: [
+      { rel: "stylesheet", href: appCss },
+      { rel: "icon", type: "image/png", href: "/logo.png" },
+      { rel: "apple-touch-icon", href: "/logo.png" },
+      { rel: "preconnect", href: "https://fonts.googleapis.com" },
+      { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
+      {
+        rel: "stylesheet",
+        href: "https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Manrope:wght@400;500;600;700&display=swap",
+      },
+    ],
+    scripts: [
+      {
+        type: "application/ld+json",
+        children: JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "SoftwareApplication",
+          name: "BloxSmith",
+          applicationCategory: "DeveloperApplication",
+          operatingSystem: "Web, Roblox Studio",
+          url: "https://bloxsmith.pro",
+          description:
+            "Describe your Roblox game in plain English. BloxSmith generates Luau scripts, full game systems, and Toolbox assets and syncs them directly into Roblox Studio.",
+          image: "https://bloxsmith.pro/logo.png",
+          offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+          aggregateRating: { "@type": "AggregateRating", ratingValue: "4.9", ratingCount: "120" },
+        }),
+      },
+      {
+        type: "application/ld+json",
+        children: JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "Organization",
+          name: "BloxSmith",
+          url: "https://bloxsmith.pro",
+          logo: "https://bloxsmith.pro/logo.png",
+          sameAs: ["https://bloxsmith.pro"],
+          description:
+            "AI-powered Roblox game builder that generates Luau scripts and syncs them into Roblox Studio.",
+        }),
+      },
+      {
+        type: "application/ld+json",
+        children: JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "WebSite",
+          name: "BloxSmith",
+          url: "https://bloxsmith.pro",
+          potentialAction: {
+            "@type": "SearchAction",
+            target: "https://bloxsmith.pro/templates?q={search_term_string}",
+            "query-input": "required name=search_term_string",
+          },
+        }),
+      },
+    ],
+  }),
+  shellComponent: RootShell,
+  component: RootComponent,
+  notFoundComponent: NotFoundComponent,
+  errorComponent: ErrorComponent,
+});
+
+const HYDRATION_CLEANUP_SCRIPT = `
+(function(){
+  try {
+    var html = document.documentElement;
+    var body = document.body;
+    var remove = ["crxlauncher"];
+    for (var i = 0; i < remove.length; i++) {
+      html && html.removeAttribute(remove[i]);
+      body && body.removeAttribute(remove[i]);
+    }
+  } catch (_) {}
+})();`;
+
+function RootShell({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: HYDRATION_CLEANUP_SCRIPT }} />
+        <HeadContent />
+      </head>
+      <body suppressHydrationWarning>
+        {children}
+        <Scripts />
+      </body>
+    </html>
+  );
+}
+
+function ImageGeneratorButtonInjector() {
+  useEffect(() => {
+    const setNativeValue = (element: HTMLTextAreaElement, value: string) => {
+      const valueSetter = Object.getOwnPropertyDescriptor(element, "value")?.set;
+      const prototype = Object.getPrototypeOf(element);
+      const prototypeValueSetter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
+      if (prototypeValueSetter && valueSetter !== prototypeValueSetter)
+        prototypeValueSetter.call(element, value);
+      else valueSetter?.call(element, value);
+      element.dispatchEvent(new Event("input", { bubbles: true }));
+      element.dispatchEvent(new Event("change", { bubbles: true }));
+    };
+
+    const inject = () => {
+      if (!location.pathname.startsWith("/project/")) return;
+      if (document.querySelector("[data-bloxsmith-generate-image]")) return;
+
+      const imageButton = Array.from(document.querySelectorAll("button")).find(
+        (button) => button.textContent?.trim() === "Image",
+      );
+      if (!imageButton?.parentElement) return;
+
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.bloxsmithGenerateImage = "true";
+      button.title = "Generate Roblox thumbnail, icon, decal, badge, gamepass image, or promo art";
+      button.className =
+        "inline-flex h-8 items-center gap-1 rounded-lg border border-orange-400/40 bg-orange-500/10 px-2 text-orange-300 hover:bg-orange-500/20 transition";
+      button.innerHTML =
+        '<span aria-hidden="true">🎨</span><span class="text-[11px] font-medium">Generate Image</span>';
+      button.addEventListener("click", () => {
+        const textarea = document.querySelector<HTMLTextAreaElement>(
+          'textarea[placeholder*="Ask anything"], textarea[placeholder*="attach"], textarea',
+        );
+        if (!textarea) return;
+        const current = textarea.value.trim();
+        const prompt =
+          "Generate a Roblox-ready 16:9 game thumbnail image. Make it colorful, premium, high-energy, clickable, and polished. Leave room for bold title text. Theme: " +
+          (current || "my Roblox game");
+        setNativeValue(textarea, prompt);
+        textarea.focus();
+      });
+
+      imageButton.insertAdjacentElement("afterend", button);
+    };
+
+    inject();
+    const observer = new MutationObserver(inject);
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, []);
+
+  return null;
+}
+
+function RootComponent() {
+  const { queryClient } = Route.useRouteContext();
+  useUnlockAudio();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const hideFloatingChat = pathname.startsWith("/browse");
+  const heavyWorkspaceRoute =
+    pathname.startsWith("/project/") ||
+    pathname.startsWith("/generate-3d") ||
+    pathname.startsWith("/ui-generator");
+  const [enableFloatingChat, setEnableFloatingChat] = useState(false);
+  useEffect(() => {
+    setEnableFloatingChat(false);
+    if (hideFloatingChat || heavyWorkspaceRoute) return;
+    const start = () => setEnableFloatingChat(true);
+    const idle = (window as any).requestIdleCallback?.(start, { timeout: 1600 });
+    const timeout = idle ? null : window.setTimeout(start, 900);
+    return () => {
+      if (idle) (window as any).cancelIdleCallback?.(idle);
+      if (timeout) window.clearTimeout(timeout);
+    };
+  }, [hideFloatingChat, heavyWorkspaceRoute, pathname]);
+  return (
+    <ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <ComingSoonGate>
+          <AuthProvider>
+            <MfaSessionGuard />
+            <Suspense fallback={null}>
+              <PresenceHeartbeat />
+            </Suspense>
+            <Outlet />
+
+            {!heavyWorkspaceRoute && <ClickRipple />}
+            {enableFloatingChat && (
+              <Suspense fallback={null}>
+                <GlobalChat />
+              </Suspense>
+            )}
+            <Toaster theme="dark" position="top-right" />
+          </AuthProvider>
+        </ComingSoonGate>
+      </QueryClientProvider>
+    </ThemeProvider>
+  );
+}

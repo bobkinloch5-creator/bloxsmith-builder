@@ -1,0 +1,108 @@
+--- pristine/bloxsmith-builder-main/src/lib/playtest-diagnose.server.ts	2026-06-04 02:28:00.000000000 +0000
++++ bloxsmith2/bloxsmith-builder-main/src/lib/playtest-diagnose.server.ts	2026-06-04 02:40:53.195039442 +0000
+@@ -16,6 +16,10 @@
+   | "orphaned_remote"
+   | "performance"
+   | "missing_spawn"
++  | "missing_asset"
++  | "broken_npc"
++  | "broken_tool"
++  | "deprecated_api"
+   | "other";
+ 
+ export type Finding = {
+@@ -511,6 +515,94 @@
+     });
+   }
+ 
++  // 14) Missing / broken asset references (empty or zeroed asset IDs).
++  for (const f of files) {
++    const src = f.content || "";
++    if (!isScript(f)) continue;
++    const brokenAsset =
++      /\b(SoundId|Texture|TextureId|MeshId|Image|HatAttachment|Decal)\s*=\s*["'](?:rbxassetid:\/\/0?|)["']/.test(src) ||
++      /rbxassetid:\/\/0\b/.test(src);
++    if (brokenAsset) {
++      found.push({
++        id: nid("asset"),
++        severity: "warning",
++        kind: "missing_asset",
++        title: "Empty or zeroed asset ID",
++        detail: `${f.path} sets a SoundId/Texture/MeshId/Image to an empty string or rbxassetid://0. The sound/decal/mesh will be silent or invisible — fill in a real free asset ID.`,
++        target: f.path,
++      });
++    }
++  }
++
++  // 15) NPC models with no Humanoid (won't walk, animate, or take damage).
++  const npcModels = files.filter(
++    (f) =>
++      f.file_type === "Model" &&
++      /\b(NPC|Npc|Enemy|Mob|Zombie|Guard|Villager|Merchant|Boss|Character|Monster)\b/.test(f.path),
++  );
++  for (const m of npcModels) {
++    const childPrefix = m.path + "/";
++    const hasHumanoid = files.some(
++      (o) => o.file_type === "Humanoid" && o.path.startsWith(childPrefix),
++    );
++    if (!hasHumanoid) {
++      found.push({
++        id: nid("npc"),
++        severity: "warning",
++        kind: "broken_npc",
++        title: `NPC has no Humanoid: ${m.path.split("/").pop()}`,
++        detail: `${m.path} looks like an NPC but contains no Humanoid, so it can't walk, animate, pathfind, or take damage. Add a Humanoid (and a PrimaryPart) to make it a working character.`,
++        target: m.path,
++      });
++    }
++  }
++
++  // 16) Tools with no Handle (can't be equipped without one unless RequiresHandle=false).
++  const tools = files.filter((f) => f.file_type === "Tool");
++  for (const t of tools) {
++    const childPrefix = t.path + "/";
++    const hasHandle = files.some(
++      (o) => o.path.startsWith(childPrefix) && /\/Handle$/.test(o.path) && /Part|MeshPart/.test(o.file_type),
++    );
++    if (!hasHandle) {
++      found.push({
++        id: nid("tool"),
++        severity: "warning",
++        kind: "broken_tool",
++        title: `Tool has no Handle: ${t.path.split("/").pop()}`,
++        detail: `${t.path} is a Tool with no part named "Handle". It won't appear in the player's hand when equipped unless you set Tool.RequiresHandle = false. Add a Part named Handle.`,
++        target: t.path,
++      });
++    }
++  }
++
++  // 17) Deprecated / legacy APIs — still run, but cause lag and subtle bugs.
++  const DEPRECATED: Array<{ re: RegExp; fix: string }> = [
++    { re: /(?:^|[^.\w])wait\s*\(/m, fix: "use task.wait() instead of the global wait() (more accurate, no throttling)" },
++    { re: /(?:^|[^.\w])spawn\s*\(/m, fix: "use task.spawn() instead of the global spawn()" },
++    { re: /(?:^|[^.\w])delay\s*\(/m, fix: "use task.delay() instead of the global delay()" },
++    { re: /:remove\s*\(\s*\)/m, fix: "use :Destroy() instead of the deprecated :remove()" },
++    { re: /Humanoid:LoadAnimation\b/m, fix: "load animations on the Humanoid's Animator (Humanoid:WaitForChild('Animator'):LoadAnimation) — Humanoid:LoadAnimation is deprecated" },
++    { re: /workspace:FindPartOnRay\b|:FindPartOnRay\b/m, fix: "use workspace:Raycast() instead of the deprecated FindPartOnRay" },
++  ];
++  for (const f of files) {
++    const src = f.content || "";
++    if (!isScript(f)) continue;
++    for (const d of DEPRECATED) {
++      if (d.re.test(src)) {
++        found.push({
++          id: nid("dep"),
++          severity: "info",
++          kind: "deprecated_api",
++          title: "Deprecated API in use",
++          detail: `${f.path}: ${d.fix}.`,
++          target: f.path,
++        });
++        break; // one deprecated-API note per file is enough
++      }
++    }
++  }
++
+   return found;
+ }
+ 

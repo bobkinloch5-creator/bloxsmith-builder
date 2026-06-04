@@ -1,0 +1,136 @@
+--- pristine/bloxsmith-builder-main/src/lib/roblox-docs.server.ts	2026-06-04 02:28:00.000000000 +0000
++++ bloxsmith2/bloxsmith-builder-main/src/lib/roblox-docs.server.ts	2026-06-04 04:02:14.521435719 +0000
+@@ -9,10 +9,27 @@
+ const CHUNK_OVERLAP = 200;
+ const GH_REPO = "Roblox/creator-docs";
+ const GH_BRANCH = "main";
++// Optional GitHub token. api.github.com allows only 60 requests/hour
++// unauthenticated, so on a serverless host the repo-tree listing frequently
++// 403s ("API rate limit exceeded") and the whole sync fails. A token raises the
++// limit to 5,000/hour. Raw file fetches (raw.githubusercontent.com) are NOT
++// rate-limited and need no token.
++const GH_TOKEN = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || "";
++
++function ghApiHeaders(): Record<string, string> {
++  const h: Record<string, string> = {
++    "User-Agent": "BloxSmith-Docs-Sync",
++    Accept: "application/vnd.github+json",
++  };
++  if (GH_TOKEN) h.Authorization = `Bearer ${GH_TOKEN}`;
++  return h;
++}
+ 
+ // Curated prefixes — covers Luau scripting, engine reference, services,
+-// DataStore, RemoteEvents, UI, MarketplaceService, plugins. Keeps total
+-// chunk count manageable (a few thousand) instead of the whole ~50k tree.
++// DataStore, RemoteEvents, UI, MarketplaceService, plugins, tutorials, art,
++// audio, physics, animation, characters, environment. Broad enough that the AI
++// "knows" the engine, while keeping the chunk count manageable (a few thousand)
++// instead of the whole ~50k-file tree.
+ const DEFAULT_INCLUDE_PREFIXES = [
+   "content/en-us/scripting",
+   "content/en-us/reference/engine/classes",
+@@ -22,13 +39,23 @@
+   "content/en-us/reference/engine/libraries",
+   "content/en-us/luau",
+   "content/en-us/cloud-services",
++  "content/en-us/cloud",
+   "content/en-us/projects/data-model",
+   "content/en-us/projects/assets",
+   "content/en-us/studio",
+   "content/en-us/ui",
+   "content/en-us/input",
+   "content/en-us/players",
++  "content/en-us/characters",
++  "content/en-us/animation",
++  "content/en-us/physics",
++  "content/en-us/environment",
++  "content/en-us/audio",
++  "content/en-us/sound",
++  "content/en-us/art",
++  "content/en-us/tutorials",
+   "content/en-us/production/monetization",
++  "content/en-us/production/publishing",
+ ];
+ 
+ export type DocsCitation = {
+@@ -131,15 +158,28 @@
+ 
+ async function listRepoTree(): Promise<TreeEntry[]> {
+   const url = `https://api.github.com/repos/${GH_REPO}/git/trees/${GH_BRANCH}?recursive=1`;
+-  const res = await fetch(url, {
+-    headers: {
+-      "User-Agent": "BloxSmith-Docs-Sync",
+-      Accept: "application/vnd.github+json",
+-    },
+-  });
+-  if (!res.ok) throw new Error(`github tree ${res.status}`);
++  const res = await fetch(url, { headers: ghApiHeaders() });
++  if (!res.ok) {
++    const body = await res.text().catch(() => "");
++    const isRate =
++      res.status === 403 &&
++      (/rate limit/i.test(body) || res.headers.get("x-ratelimit-remaining") === "0");
++    if (isRate) {
++      throw new Error(
++        GH_TOKEN
++          ? "GitHub API rate limit hit even with a token — wait a few minutes and re-run."
++          : "GitHub API rate limit hit (60/hour unauthenticated). Set a GITHUB_TOKEN env var to raise it to 5,000/hour, then re-run the sync.",
++      );
++    }
++    throw new Error(`github tree ${res.status}: ${body.slice(0, 160)}`);
++  }
+   const json = (await res.json()) as { tree: TreeEntry[]; truncated?: boolean };
+-  return json.tree.filter((e) => e.type === "blob" && e.path.endsWith(".md"));
++  if (json.truncated) {
++    console.warn(
++      "[roblox-docs] GitHub tree response was truncated — some files may be missing from this pass.",
++    );
++  }
++  return (json.tree ?? []).filter((e) => e.type === "blob" && e.path.endsWith(".md"));
+ }
+ 
+ async function fetchFileRaw(path: string): Promise<string> {
+@@ -266,6 +306,9 @@
+   // 3) Process this batch
+   const batch = todo.slice(0, batchSize);
+   let processedNow = 0;
++  let fatalError: string | null = null;
++  const isFatal = (msg: string) =>
++    /embed|LOVABLE_API_KEY|unauthorized|401|403|invalid embedding|rate limit/i.test(msg);
+   for (const entry of batch) {
+     try {
+       const md = await fetchFileRaw(entry.path);
+@@ -303,10 +346,31 @@
+       if (insErr) throw new Error(insErr.message);
+       processedNow += 1;
+     } catch (e) {
+-      console.warn(`[roblox-docs] skip ${entry.path}:`, e instanceof Error ? e.message : e);
++      const msg = e instanceof Error ? e.message : String(e);
++      console.warn(`[roblox-docs] skip ${entry.path}:`, msg);
++      // Embedding / auth / rate-limit failures are systemic — every file will
++      // fail the same way, so stop and report instead of silently indexing 0.
++      if (isFatal(msg) && !fatalError) {
++        fatalError = msg;
++        break;
++      }
+     }
+   }
+ 
++  // If nothing indexed this batch because of a systemic (embedding/auth) error,
++  // record it on the sync row so the panel shows WHY instead of a silent 0.
++  if (processedNow === 0 && fatalError) {
++    await (supabaseAdmin as any)
++      .from("roblox_docs_sync")
++      .update({
++        status: "failed",
++        error: fatalError.slice(0, 400),
++        finished_at: new Date().toISOString(),
++      })
++      .eq("id", syncId);
++    throw new Error(`Docs sync failed: ${fatalError}`);
++  }
++
+   const remaining = todo.length - batch.length;
+   const done = remaining <= 0;
+ 
