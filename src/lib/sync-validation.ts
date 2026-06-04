@@ -52,6 +52,56 @@ const VALID_SERVICES = new Set([
   "HttpService",
 ]);
 
+// Services that are valid to fetch via game:GetService("X") but are NOT valid
+// parent containers (so they don't belong in VALID_SERVICES above). Without
+// this, scripts that legitimately use Players, RunService, TweenService, etc.
+// were wrongly flagged "references unknown service". This list covers the
+// commonly-scripted Roblox services.
+const VALID_GET_SERVICES = new Set([
+  ...VALID_SERVICES,
+  "Players",
+  "RunService",
+  "TweenService",
+  "UserInputService",
+  "ContextActionService",
+  "Debris",
+  "CollectionService",
+  "PhysicsService",
+  "PathfindingService",
+  "MarketplaceService",
+  "DataStoreService",
+  "MemoryStoreService",
+  "MessagingService",
+  "TeleportService",
+  "BadgeService",
+  "GamePassService",
+  "GroupService",
+  "InsertService",
+  "AssetService",
+  "ContentProvider",
+  "ReplicatedScriptService",
+  "ServerScriptService",
+  "TextService",
+  "LocalizationService",
+  "PolicyService",
+  "ProximityPromptService",
+  "GuiService",
+  "HapticService",
+  "VRService",
+  "SoundService",
+  "StarterGui",
+  "Stats",
+  "LogService",
+  "TestService",
+  "TextChatService",
+  "Chat",
+  "VoiceChatService",
+  "AnalyticsService",
+  "Teams",
+  "Players",
+  "RunService",
+]);
+
 // LocalScripts only run client-side; valid containers:
 const LOCAL_CONTAINERS = [
   "StarterPlayer",
@@ -321,7 +371,7 @@ export function validateGenerated(
 
     // Service references inside the script
     for (const svc of extractServiceRefs(f.content)) {
-      if (!VALID_SERVICES.has(svc)) {
+      if (!VALID_GET_SERVICES.has(svc)) {
         warnings.push({
           level: "warning",
           scope: "service",

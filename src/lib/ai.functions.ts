@@ -655,6 +655,11 @@ function getProceduralCityFallback(p: string): {
     part("Workspace/Map/Vehicles", name, [12, 4, 20], [x, 3, z], "Metal", rgb);
   }
 
+  // Police precinct — real content so the "Police" folder is never empty.
+  part("Workspace/Map/Police", "PoliceStation", [50, 34, 40], [270, 17, -45], "Concrete", [62, 92, 142]);
+  part("Workspace/Map/Police", "PoliceStationSign", [50, 6, 3], [270, 37, -23], "Neon", [80, 150, 255]);
+  part("Workspace/Map/Police", "PatrolCruiser", [12, 4, 20], [270, 3, 4], "Metal", [35, 60, 120]);
+
   actions.push({
     type: "create",
     className: "SpawnLocation",
@@ -883,6 +888,33 @@ function getProceduralMapFallback(p: string): {
         Color: color(82, 82, 88),
         Orientation: v3(0, Math.round((-angle * 180) / Math.PI), 0),
       },
+    });
+  }
+
+  // Decorative lamp posts so the "Decor" folder always holds real content.
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    const dx = Math.round(Math.cos(a) * 95);
+    const dz = Math.round(Math.sin(a) * 95);
+    actions.push({
+      type: "create",
+      className: "Part",
+      name: `LampPost${i + 1}`,
+      parent: "Workspace/Map/Decor",
+      properties: {
+        Size: v3(1.5, 16, 1.5),
+        Position: v3(dx, 8, dz),
+        Anchored: true,
+        Material: mat("Metal"),
+        Color: color(45, 48, 54),
+      },
+      children: [
+        {
+          className: "PointLight",
+          name: "Glow",
+          properties: { Brightness: 2, Range: 28, Color: color(255, 224, 170) },
+        },
+      ],
     });
   }
 
@@ -1951,6 +1983,27 @@ export const generateWithAI = createServerFn({ method: "POST" })
       if (a && typeof a === "object" && typeof a.type === "string") queued.push(a);
     }
 
+    // Charged-but-got-nothing guard: if the user asked for a build but the AI
+    // (and the fallback template) produced no files and no actions — or sync
+    // validation dropped everything as un-buildable — they got no value, so
+    // refund the credits instead of silently keeping them. Marking
+    // _fallbackNoCharge also records 0 credits on the generation row below.
+    if (
+      mode === "generate" &&
+      queued.length === 0 &&
+      isBuildIntent(prompt) &&
+      !isOwner &&
+      !(result as any)._fallbackNoCharge
+    ) {
+      try {
+        await supabase.rpc("refund_credits", {
+          _amount: cost,
+          _reason: "empty_build_no_operations",
+        });
+      } catch {}
+      (result as any)._fallbackNoCharge = true;
+    }
+
     // Always create a generation row so the client can later apply it.
     const { data: genRow } = await supabase
       .from("generations")
@@ -2285,7 +2338,7 @@ Keep it under ~400 words. Be specific to the user's request and existing project
         maxRetries: 0,
         timeout: { totalMs: thinking ? 18_000 : 12_000 },
       });
-      text = out;
+      text = stripModelReasoning(out) || out;
       await rememberProjectInteraction(supabase, {
         projectId,
         userId,
@@ -2754,7 +2807,7 @@ ${smartChatBlock}${includeProject && memoryBlock ? `\n\n${memoryBlock}` : ""}${i
       throw new Error("Chat failed after retrying: " + msg);
     }
 
-    return { reply: text, cost: isOwner ? 0 : chatTotal };
+    return { reply: stripModelReasoning(text) || text, cost: isOwner ? 0 : chatTotal };
   });
 
 // -----------------------------------------------------------------------------
