@@ -52,6 +52,29 @@ const VALID_SERVICES = new Set([
   "HttpService",
 ]);
 
+export const LOWER_TO_CANONICAL: Record<string, string> = {};
+for (const s of VALID_SERVICES) {
+  LOWER_TO_CANONICAL[s.toLowerCase()] = s;
+}
+LOWER_TO_CANONICAL["workspace"] = "Workspace";
+LOWER_TO_CANONICAL["replicatedstorage"] = "ReplicatedStorage";
+LOWER_TO_CANONICAL["replicatedfirst"] = "ReplicatedFirst";
+LOWER_TO_CANONICAL["serverscriptservice"] = "ServerScriptService";
+LOWER_TO_CANONICAL["serverstorage"] = "ServerStorage";
+LOWER_TO_CANONICAL["startergui"] = "StarterGui";
+LOWER_TO_CANONICAL["starterpack"] = "StarterPack";
+LOWER_TO_CANONICAL["starterplayer"] = "StarterPlayer";
+LOWER_TO_CANONICAL["starterplayerscripts"] = "StarterPlayerScripts";
+LOWER_TO_CANONICAL["startercharacterscripts"] = "StarterCharacterScripts";
+LOWER_TO_CANONICAL["lighting"] = "Lighting";
+LOWER_TO_CANONICAL["soundservice"] = "SoundService";
+LOWER_TO_CANONICAL["teams"] = "Teams";
+LOWER_TO_CANONICAL["chat"] = "Chat";
+LOWER_TO_CANONICAL["textchatservice"] = "TextChatService";
+LOWER_TO_CANONICAL["materialservice"] = "MaterialService";
+LOWER_TO_CANONICAL["httpservice"] = "HttpService";
+
+
 // Services that are valid to fetch via game:GetService("X") but are NOT valid
 // parent containers (so they don't belong in VALID_SERVICES above). Without
 // this, scripts that legitimately use Players, RunService, TweenService, etc.
@@ -174,7 +197,9 @@ const INVALID_CLASS_REMAP: Record<string, string | null> = {
 
 function rootOf(loc: string): string {
   const trimmed = (loc ?? "").replace(/^\/+/, "").trim();
-  return trimmed.split(/[/.]/)[0] ?? "";
+  const rawRoot = trimmed.split(/[/.]/)[0] ?? "";
+  const lower = rawRoot.toLowerCase();
+  return LOWER_TO_CANONICAL[lower] || rawRoot;
 }
 
 function isUnderAny(loc: string, roots: string[]): boolean {
@@ -838,8 +863,26 @@ export function autoRepairResult(
   // 1. De-duplicate files at the exact same path and repair syntax
   const seenFilePaths = new Set<string>();
   for (const file of files) {
-    if (!file.path) continue;
-    const normPath = file.path.trim().replace(/\\/g, "/");
+    let normServiceLoc = file.service_location;
+    if (normServiceLoc) {
+      const parts = normServiceLoc.split(/[/.]/);
+      const root = parts[0] ?? "";
+      const canonicalRoot = LOWER_TO_CANONICAL[root.toLowerCase()] || root;
+      if (root !== canonicalRoot) {
+        parts[0] = canonicalRoot;
+        normServiceLoc = parts.join("/");
+        repairs.push(`Normalized service location casing: ${file.service_location} -> ${normServiceLoc}`);
+      }
+    }
+
+    let normPath = file.path.trim().replace(/\\/g, "/");
+    const parts = normPath.split("/");
+    const root = parts[0] ?? "";
+    const canonicalRoot = LOWER_TO_CANONICAL[root.toLowerCase()] || root;
+    if (root !== canonicalRoot) {
+      parts[0] = canonicalRoot;
+      normPath = parts.join("/");
+    }
 
     if (seenFilePaths.has(normPath)) {
       repairs.push(`Dropped duplicate file path: ${normPath}`);
@@ -863,6 +906,7 @@ export function autoRepairResult(
     repairedFiles.push({
       ...file,
       path: normPath,
+      service_location: normServiceLoc,
       content: finalContent,
     });
   }
@@ -913,6 +957,45 @@ export function autoRepairResult(
   for (const a of actions) {
     if (!a || typeof a !== "object" || !a.type) continue;
     const act = { ...a };
+
+    // Casing Normalization for actions
+    if (typeof act.parent === "string" && act.parent) {
+      const parts = act.parent.split(/[/.]/);
+      const root = parts[0] ?? "";
+      const canonicalRoot = LOWER_TO_CANONICAL[root.toLowerCase()] || root;
+      if (root !== canonicalRoot) {
+        parts[0] = canonicalRoot;
+        act.parent = parts.join("/");
+        repairs.push(`Normalized parent casing for "${act.name || act.type}": ${a.parent} -> ${act.parent}`);
+      }
+    }
+    if (typeof act.path === "string" && act.path) {
+      const parts = act.path.split(/[/.]/);
+      const root = parts[0] ?? "";
+      const canonicalRoot = LOWER_TO_CANONICAL[root.toLowerCase()] || root;
+      if (root !== canonicalRoot) {
+        parts[0] = canonicalRoot;
+        act.path = parts.join("/");
+      }
+    }
+
+    // Coerce/repair assetId for toolbox inserts
+    if (act.type === "insert_toolbox_asset" || act.type === "insertAsset") {
+      if (act.assetId !== undefined && act.assetId !== null) {
+        const str = String(act.assetId);
+        const match = str.match(/\d+/);
+        if (match) {
+          const num = parseInt(match[0], 10);
+          if (act.assetId !== num) {
+            act.assetId = num;
+            repairs.push(`Coerced assetId for "${act.name || act.type}" to number: ${num}`);
+          }
+        } else {
+          act.assetId = 0;
+          repairs.push(`Invalid assetId format for "${act.name || act.type}", set to 0`);
+        }
+      }
+    }
 
     // Auto-repair script parenting in script actions
     if (act.type === "script" || act.type === "create_script") {
