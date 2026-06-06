@@ -878,6 +878,7 @@ function Generate3DPage() {
           texture,
           rigged,
           animateInPlace,
+          provider,
         },
       })) as Generate3DResult;
       if (out.ok) {
