@@ -649,7 +649,7 @@ function Generate3DPage() {
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectId, setProjectId] = useState("");
-  const [modelType, setModelType] = useState("pet");
+  const [modelType, setModelType] = useState("prop");
   const [robloxStyle, setRobloxStyle] = useState("chunky");
   const [theme, setTheme] = useState("neon");
   const [material, setMaterial] = useState("plastic");

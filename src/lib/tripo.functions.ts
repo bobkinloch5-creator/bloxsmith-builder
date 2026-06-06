@@ -76,24 +76,61 @@ function cleanName(value: string, fallback = "BloxSmithAsset") {
   return cleaned || fallback;
 }
 
+// Frontend default control values. When a control is still at its default we
+// treat it as "the user didn't choose this" and DON'T inject it into the
+// prompt, so the user's typed request stays the dominant subject. (Previously
+// every default was force-appended, so "crystals" became a neon teal pet.)
+const MODEL_PROMPT_DEFAULTS = {
+  modelType: "prop",
+  robloxStyle: "chunky",
+  theme: "neon",
+  material: "plastic",
+  primaryColor: "#14f195",
+  secondaryColor: "#0f172a",
+} as const;
+
 function buildModelPrompt(data: z.infer<typeof InputSchema>) {
-  const base =
-    data.prompt.trim() ||
-    "Create a safe Roblox-ready 3D model from this reference image. Keep it clean, non-NSFW, game-friendly, and suitable for all ages.";
+  const subject = data.prompt.trim();
+  const base = subject
+    ? `A 3D model of: ${subject}.`
+    : data.inputMode === "image"
+      ? "Recreate the object in the reference image as a clean, simple, Roblox-ready 3D model."
+      : "A simple, clean, Roblox-ready 3D prop.";
+
   const wantsGloss = data.textureLook === "glossy";
   const finish = wantsGloss
-    ? "Material finish: subtle gloss only, never mirror-like; keep specular reflections soft."
-    : "Material finish: MATTE, low-specular, fully non-glossy, no shiny highlights, no mirror reflections, no wet/plastic sheen. Use flat, painted-style PBR textures with roughness ~0.9 and metalness 0.";
+    ? "Finish: at most a very subtle satin sheen — never mirror-like, wet, or high-gloss."
+    : "Finish: matte and non-glossy. No shiny highlights, no mirror reflections, no wet or plastic sheen. Use flat, painted-style textures with high roughness and no metalness.";
+
+  // Only controls the user actually changed from their defaults become brief,
+  // clearly-subordinate hints — they refine the look but must never change WHAT
+  // the object is. We deliberately do not inject a hard "model type" or specific
+  // colors when they're at defaults, which is what used to hijack the prompt.
+  const hints: string[] = [];
+  if (data.modelType && data.modelType !== MODEL_PROMPT_DEFAULTS.modelType) hints.push(data.modelType);
+  if (data.robloxStyle && data.robloxStyle !== MODEL_PROMPT_DEFAULTS.robloxStyle)
+    hints.push(`${data.robloxStyle} style`);
+  if (data.theme && data.theme !== MODEL_PROMPT_DEFAULTS.theme) hints.push(`${data.theme} theme`);
+  if (data.material && data.material !== MODEL_PROMPT_DEFAULTS.material)
+    hints.push(`${data.material} material`);
+  const colorChanged =
+    (data.primaryColor && data.primaryColor.toLowerCase() !== MODEL_PROMPT_DEFAULTS.primaryColor) ||
+    (data.secondaryColor &&
+      data.secondaryColor.toLowerCase() !== MODEL_PROMPT_DEFAULTS.secondaryColor);
+  if (colorChanged) hints.push(`main colors near ${data.primaryColor} and ${data.secondaryColor}`);
+
+  const hintLine = hints.length
+    ? `Light style hints (use only if they suit the subject; never change what the object is): ${hints.join(", ")}.`
+    : "";
+
   return [
     base,
-    `Model type: ${data.modelType}.`,
-    `Roblox style: ${data.robloxStyle}.`,
-    `Theme: ${data.theme}.`,
-    `Material look: ${data.material}. Texture style: ${data.textureLook}.`,
+    "Make it Roblox-friendly: clean, simple, low-poly with readable shapes, a clear silhouette, and no tiny fragile parts.",
     finish,
-    `Use primary color ${data.primaryColor} and secondary color ${data.secondaryColor}.`,
-    "Make chunky readable shapes, game-ready proportions, no tiny fragile details, and a Roblox-friendly silhouette.",
-  ].join(" ");
+    hintLine,
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 function build3DTextScript(data: z.infer<typeof InputSchema>) {
