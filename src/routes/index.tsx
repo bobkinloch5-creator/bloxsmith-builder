@@ -510,7 +510,7 @@ function Landing() {
               </div>
               <div className="mt-5 sm:mt-8 grid gap-2 text-xs text-muted-foreground sm:flex sm:flex-wrap sm:items-center sm:gap-x-6">
                 <span className="inline-flex items-center gap-1.5">
-                  <CheckCircle2 className="h-3.5 w-3.5 text-success" /> 150 free starter credits +
+                  <CheckCircle2 className="h-3.5 w-3.5 text-success" /> 100 free starter credits +
                   10 daily
                 </span>
                 <span className="inline-flex items-center gap-1.5">

@@ -13,7 +13,7 @@ export const Route = createFileRoute("/signup")({
       {
         name: "description",
         content:
-          "Create a free BloxSmith account to start building Roblox games with AI — 150 starter credits, no card required, sync straight into Studio.",
+          "Create a free BloxSmith account to start building Roblox games with AI — 100 starter credits, no card required, sync straight into Studio.",
       },
       { property: "og:title", content: "Sign up for BloxSmith — Free Roblox AI Builder" },
       {
@@ -164,7 +164,7 @@ function SignupPage() {
         </Link>
         <h1 className="text-2xl font-bold text-center">Create your account</h1>
         <p className="text-sm text-muted-foreground text-center mt-1">
-          Get 150 free credits to start, plus 10 free daily.
+          Get 100 free credits to start, plus 10 free daily.
         </p>
         {errorMessage && (
           <p className="mt-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">

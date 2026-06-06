@@ -40,7 +40,7 @@ export const Route = createFileRoute("/faq")({
 const QA = [
   {
     q: "How do credits work?",
-    a: "Every action that uses AI costs credits. Chat replies cost 1, script generation 1, system generation 3, full system 5, and a full game scaffold 12. You start with 150 free credits, plus +10 every day and promo codes and buy more whenever you need.",
+    a: "Every action that uses AI costs credits. Chat replies cost 1, script generation 1, system generation 3, full system 5, and a full game scaffold 12. You start with 100 free credits, plus +10 every day and promo codes and buy more whenever you need.",
   },
   {
     q: "Do you have subscriptions?",

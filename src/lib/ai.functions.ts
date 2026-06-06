@@ -17,6 +17,15 @@ const InputSchema = z.object({
     .regex(/^data:image\/(png|jpeg|jpg|webp|gif);base64,/, "Must be a data:image base64 URL")
     .max(8_000_000)
     .optional(),
+  imageDataUrls: z
+    .array(
+      z
+        .string()
+        .regex(/^data:image\/(png|jpeg|jpg|webp|gif);base64,/, "Must be a data:image base64 URL")
+        .max(8_000_000),
+    )
+    .max(4)
+    .optional(),
 });
 
 type GenFile = {
@@ -1983,7 +1992,12 @@ export const generateWithAI = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => InputSchema.parse(input))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const { projectId, prompt, mode, preview, imageDataUrl, thinking, mapStrategy } = data;
+    const { projectId, prompt, mode, preview, imageDataUrl, imageDataUrls, thinking, mapStrategy } =
+      data;
+    const visionImages = Array.from(
+      new Set([...(imageDataUrls ?? []), ...(imageDataUrl ? [imageDataUrl] : [])]),
+    ).slice(0, 4);
+    const primaryVisionImage = visionImages[0];
     await assertProjectOwner(supabase, projectId, userId);
 
     const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", userId);
@@ -1993,7 +2007,12 @@ export const generateWithAI = createServerFn({ method: "POST" })
       userId,
       supabase,
       source: `project_${mode}`,
-      metadata: { projectId, thinking: !!thinking, hasImage: !!imageDataUrl },
+      metadata: {
+        projectId,
+        thinking: !!thinking,
+        hasImage: visionImages.length > 0,
+        imageCount: visionImages.length,
+      },
     });
 
     const baseCost = mode === "generate" ? 3 : 1;
@@ -2030,7 +2049,7 @@ export const generateWithAI = createServerFn({ method: "POST" })
     const complexKeywords =
       /(system|datastore|leaderboard|tycoon|simulator|obby|admin|gamepass|multiple|all|whole|full game|entire|refactor|rewrite|architecture|replica|replicate|recreate|reference image|attached image|building|house|tower|castle|facade|structure)/i;
     const wantsReplica = isBuildingReplicaPrompt(prompt);
-    const isVisionBuild = !!imageDataUrl && mode === "generate";
+    const isVisionBuild = visionImages.length > 0 && mode === "generate";
     const smartFull = isSmartFullPromptRequest(prompt, mode);
     const mapRequest =
       mode === "generate" &&
@@ -2094,7 +2113,7 @@ export const generateWithAI = createServerFn({ method: "POST" })
       heavyBuild: isComplex,
     });
 
-    if (imageDataUrl && !profile.supportsVision) {
+    if (visionImages.length > 0 && !profile.supportsVision) {
       try {
         const visionResolved = resolveBuiltInGateway({ kind: "build", thinking: true });
         const visionProfile = getModelProfile(visionResolved.provider, visionResolved.modelName, {
@@ -2207,7 +2226,7 @@ export const generateWithAI = createServerFn({ method: "POST" })
     const smartBlock = buildSmartContextBlock(prompt, {
       aiMode: mode,
       studioConnected: !!liveContext?.context,
-      hasVisionImages: !!imageDataUrl,
+      hasVisionImages: visionImages.length > 0,
       fileCount: (allFiles ?? []).length,
       liveInstanceCount: liveContext?.instance_count ?? null,
     });
@@ -2240,7 +2259,7 @@ export const generateWithAI = createServerFn({ method: "POST" })
         buildBloxSmithTools({
           userId,
           projectId,
-          referenceImageDataUrl: imageDataUrl ?? null,
+          referenceImageDataUrl: primaryVisionImage ?? null,
         }) as Record<string, any>,
       );
       const mcpTools = shouldLoadUserMcpTools(prompt)
@@ -2265,14 +2284,14 @@ export const generateWithAI = createServerFn({ method: "POST" })
         {
           model,
           system: activeSystemPrompt + (mapRequest && mapDirective ? `\n\n${mapDirective}` : ""),
-          ...(imageDataUrl && profile.supportsVision
+          ...(visionImages.length > 0 && profile.supportsVision
             ? {
                 messages: [
                   {
                     role: "user",
                     content: [
                       { type: "text", text: fullPrompt },
-                      { type: "image", image: imageDataUrl },
+                      ...visionImages.map((image) => ({ type: "image" as const, image })),
                     ],
                   },
                 ],
@@ -2280,8 +2299,8 @@ export const generateWithAI = createServerFn({ method: "POST" })
             : {
                 prompt:
                   fullPrompt +
-                  (imageDataUrl
-                    ? "\n\nNOTE: An image was attached, but the selected provider could not accept image input. Build a polished inferred replica from the user's text and mention that exact image vision was unavailable."
+                  (visionImages.length > 0
+                    ? `\n\nNOTE: ${visionImages.length} image attachment${visionImages.length === 1 ? " was" : "s were"} provided, but the selected provider could not accept image input. Build a polished inferred replica from the user's text and mention that exact image vision was unavailable.`
                     : ""),
               }),
           ...(Object.keys(tools).length > 0
@@ -2384,14 +2403,14 @@ export const generateWithAI = createServerFn({ method: "POST" })
                 model: fallbackProvider(fallbackPlan.model),
                 system:
                   SLIM_SYSTEM_PROMPT + (mapRequest && mapDirective ? `\n\n${mapDirective}` : ""),
-                ...(imageDataUrl
+                ...(visionImages.length > 0
                   ? {
                       messages: [
                         {
                           role: "user",
                           content: [
                             { type: "text", text: fullPrompt },
-                            { type: "image", image: imageDataUrl },
+                            ...visionImages.map((image) => ({ type: "image" as const, image })),
                           ],
                         },
                       ],
@@ -4199,6 +4218,40 @@ Build EVERYTHING. Ship the complete game.`;
     };
     type Segment = { summary?: string; assumptions?: string[]; phases?: Phase[] };
     let plan: { summary: string; assumptions: string[]; phases: Phase[] };
+    let partialFrontend = false;
+    let partialRefund = 0;
+
+    const phaseNumber = (title: string): number | null => {
+      const match = String(title ?? "").match(/\bPhase\s+([1-6])\b/i);
+      return match ? Number(match[1]) : null;
+    };
+
+    const normalizeSegment = (value: Segment | null): Segment | null => {
+      if (!value || !Array.isArray(value.phases)) return null;
+      const phases = value.phases
+        .filter((phase): phase is Phase => !!phase && typeof phase === "object")
+        .map((phase) => ({
+          title: String(phase.title ?? "").trim(),
+          goal: String(phase.goal ?? "").trim(),
+          files: Array.isArray(phase.files) ? phase.files : [],
+          actions: Array.isArray(phase.actions) ? phase.actions : [],
+        }))
+        .filter((phase) => phase.title && (phase.files.length > 0 || phase.actions.length > 0))
+        .sort((left, right) => (phaseNumber(left.title) ?? 99) - (phaseNumber(right.title) ?? 99));
+      if (phases.length === 0) return null;
+      return {
+        summary: String(value.summary ?? "").trim(),
+        assumptions: Array.isArray(value.assumptions)
+          ? value.assumptions.map((item) => String(item)).filter(Boolean)
+          : [],
+        phases,
+      };
+    };
+
+    const hasExpectedPhases = (segment: Segment | null, expected: number[]): boolean => {
+      const found = new Set((segment?.phases ?? []).map((phase) => phaseNumber(phase.title)));
+      return expected.every((number) => found.has(number));
+    };
 
     // Compact manifest of everything a finished segment created, so the next
     // segment can require those ModuleScripts / fire those RemoteEvents at their
@@ -4232,11 +4285,15 @@ Build EVERYTHING. Ship the complete game.`;
 
     try {
       const { generateTextWithToolFallback } = await import("./ai-retry.server");
-      const allTools = buildBloxSmithTools({ userId }) as Record<string, any>;
+      const allTools = buildBloxSmithTools({ userId, projectId }) as Record<string, any>;
       // Whitelist a small tool subset to keep tool-definition tokens low.
       // MCP tools are NOT included — they bloat the request and aren't needed
       // for an initial whole-game build.
-      const TOOL_WHITELIST = ["web_search", "roblox_asset_search", "roblox_asset_info"];
+      const TOOL_WHITELIST = [
+        "roblox_toolbox_asset_plan",
+        "roblox_asset_search",
+        "roblox_asset_info",
+      ];
       const slimTools: Record<string, any> = {};
       for (const k of TOOL_WHITELIST) if (allTools[k]) slimTools[k] = allTools[k];
 
@@ -4285,10 +4342,12 @@ Build EVERYTHING. Ship the complete game.`;
         label: string,
         phaseFocus: string,
         manifest: string,
+        expectedPhases: number[],
+        preferTools: boolean,
       ): Promise<Segment | null> => {
         let rawText = "";
         try {
-          ({ text: rawText } = await runSegment(label, phaseFocus, manifest, true));
+          ({ text: rawText } = await runSegment(label, phaseFocus, manifest, preferTools));
         } catch (e: any) {
           const m = String(e?.message ?? e);
           // Too big / rate-limited on the tools call → retry once with NO tools
@@ -4300,7 +4359,15 @@ Build EVERYTHING. Ship the complete game.`;
             throw e;
           }
         }
-        return extractBuildJson(rawText) as Segment | null;
+        let parsed = normalizeSegment(extractBuildJson(rawText) as Segment | null);
+        if (hasExpectedPhases(parsed, expectedPhases)) return parsed;
+
+        console.warn(
+          `[autopilot:${label}] incomplete or malformed phase output; retrying once without tools.`,
+        );
+        ({ text: rawText } = await runSegment(label, phaseFocus, manifest, false));
+        parsed = normalizeSegment(extractBuildJson(rawText) as Segment | null);
+        return hasExpectedPhases(parsed, expectedPhases) ? parsed : null;
       };
 
       // Pass 1 — backbone. This is the hard part of the game and MUST succeed;
@@ -4309,6 +4376,8 @@ Build EVERYTHING. Ship the complete game.`;
         "backbone",
         "Phase 1 — Structure, Phase 2 — Shared Modules, Phase 3 — Server Systems",
         "",
+        [1, 2, 3],
+        false,
       );
       if (!backbone || !Array.isArray(backbone.phases) || backbone.phases.length === 0) {
         throw new Error("AI did not return valid JSON.");
@@ -4325,6 +4394,8 @@ Build EVERYTHING. Ship the complete game.`;
           "frontend",
           "Phase 4 — Client Controllers, Phase 5 — UI, Phase 6 — World",
           buildManifest(backbone.phases),
+          [4, 5, 6],
+          true,
         );
         if (frontend && Array.isArray(frontend.phases)) {
           frontendPhases = frontend.phases;
@@ -4353,6 +4424,7 @@ Build EVERYTHING. Ship the complete game.`;
         ],
         phases: [...backbone.phases, ...frontendPhases],
       };
+      partialFrontend = frontendPhases.length === 0;
     } catch (err: any) {
       if (!isOwner)
         await supabase.rpc("refund_credits", { _amount: cost, _reason: "autopilot failed" });
@@ -4404,96 +4476,303 @@ Build EVERYTHING. Ship the complete game.`;
       allWarnings += v.warnings.length;
     }
 
-    // Persist all files, and queue actions IN PHASE ORDER so the plugin
-    // executes structure → modules → systems → UI in that exact order.
+    const emptyCriticalPhase = plan.phases.find((phase) => {
+      const number = phaseNumber(phase.title);
+      return (
+        number !== null && number <= 3 && phase.files.length === 0 && phase.actions.length === 0
+      );
+    });
+    if (emptyCriticalPhase) {
+      if (!isOwner) {
+        await supabase.rpc("refund_credits", {
+          _amount: cost,
+          _reason: "autopilot critical phase blocked by validation",
+        });
+      }
+      throw new Error(
+        `${emptyCriticalPhase.title} was fully blocked by the Studio safety check. The run was stopped and credits were refunded instead of queueing a broken game.`,
+      );
+    }
+    const emptyFrontendPhase = plan.phases.find((phase) => {
+      const number = phaseNumber(phase.title);
+      return (
+        number !== null && number >= 4 && phase.files.length === 0 && phase.actions.length === 0
+      );
+    });
+    if (emptyFrontendPhase) {
+      partialFrontend = true;
+      plan.assumptions.push(
+        `${emptyFrontendPhase.title} was fully blocked by the Studio safety check. The valid backbone and remaining phases were kept, and a partial refund was issued.`,
+      );
+    }
+
+    // Build one deterministic, de-duplicated queue in strict phase order.
+    // File-backed scripts win over duplicate script actions emitted by the
+    // model, which prevents the plugin from creating the same script twice.
     let totalFiles = 0;
     let totalActions = 0;
     const rowsToInsert: any[] = [];
+    const autopilotRunId = crypto.randomUUID();
+    const runStartedAt = Date.now();
+    const finalFilesByPath = new Map<string, GenFile>();
+    const fileScriptKeys = new Set<string>();
+
+    for (const phase of plan.phases) {
+      for (const file of phase.files) {
+        finalFilesByPath.set(file.path, file);
+        const name = file.path.split("/").pop() ?? file.path;
+        fileScriptKeys.add(`${file.service_location}/${name}`.toLowerCase());
+      }
+    }
+    totalFiles = finalFilesByPath.size;
+
+    const seenActions = new Set<string>();
+    const queueAction = (action: GenAction, phaseTitle: string) => {
+      const payload = {
+        ...action,
+        _phase: phaseTitle,
+        _autopilotRunId: autopilotRunId,
+        _sequence: rowsToInsert.length,
+      };
+      const exactKey = JSON.stringify(payload, (key, value) =>
+        key === "_phase" ||
+        key === "_autopilotRunId" ||
+        key === "_sequence" ||
+        key === "generation_id"
+          ? undefined
+          : value,
+      );
+      if (seenActions.has(exactKey)) return;
+      seenActions.add(exactKey);
+      rowsToInsert.push({
+        project_id: projectId,
+        user_id: userId,
+        action_type: action.type,
+        payload,
+        status: "pending",
+        // The plugin orders by created_at. Give every action a unique timestamp
+        // so ordering remains deterministic across chunked inserts.
+        created_at: new Date(runStartedAt + rowsToInsert.length).toISOString(),
+      });
+    };
 
     for (let pi = 0; pi < plan.phases.length; pi++) {
       const phase = plan.phases[pi];
-
-      for (const f of phase.files) {
-        totalFiles++;
-        const { data: existing } = await supabase
-          .from("project_files")
-          .select("id")
-          .eq("project_id", projectId)
-          .eq("path", f.path)
-          .maybeSingle();
-        if (existing) {
-          await supabase
-            .from("project_files")
-            .update({
-              content: f.content,
-              file_type: f.file_type,
-              service_location: f.service_location,
-              updated_at: new Date().toISOString(),
-            })
-            .eq("id", existing.id);
-        } else {
-          await supabase.from("project_files").insert({
-            project_id: projectId,
-            path: f.path,
-            file_type: f.file_type,
-            service_location: f.service_location,
-            content: f.content,
-          });
-        }
-      }
-
-      const phaseQueue: GenAction[] = [];
-      // Structural actions go first within a phase, scripts second.
+      // Structural actions go first within a phase, then action-only scripts,
+      // then the canonical scripts derived from project_files.
+      const structuralActions: GenAction[] = [];
+      const scriptActions: GenAction[] = [];
       for (const a of phase.actions) {
         if (a && typeof a === "object" && typeof a.type === "string") {
-          phaseQueue.push({ ...a, _phase: phase.title });
+          if (a.type === "script") {
+            const scriptKey =
+              `${String(a.parent ?? "").replace(/\./g, "/")}/${String(a.name ?? "")}`.toLowerCase();
+            if (!fileScriptKeys.has(scriptKey)) scriptActions.push(a);
+          } else {
+            structuralActions.push(a);
+          }
         }
       }
+      for (const action of structuralActions) queueAction(action, phase.title);
+      for (const action of scriptActions) queueAction(action, phase.title);
       for (const f of phase.files) {
         const name = f.path.split("/").pop() ?? f.path;
-        phaseQueue.push({
-          type: "script",
-          parent: f.service_location,
-          name,
-          className: f.file_type,
-          source: f.content,
-          _phase: phase.title,
-        });
-      }
-
-      for (const a of phaseQueue) {
-        totalActions++;
-        rowsToInsert.push({
-          project_id: projectId,
-          user_id: userId,
-          action_type: a.type,
-          payload: a,
-          status: "pending",
-        });
+        // Only queue the final version when two phases touch the same file.
+        if (finalFilesByPath.get(f.path) === f) {
+          queueAction(
+            {
+              type: "script",
+              parent: f.service_location,
+              name,
+              className: f.file_type,
+              source: f.content,
+            },
+            phase.title,
+          );
+        }
       }
     }
+    if (!rowsToInsert.some((row) => row.action_type === "playtest_ready")) {
+      queueAction(
+        {
+          type: "playtest_ready",
+          focus: "Workspace",
+          note: "Autopilot finished queueing this game. Press Play to verify the full loop.",
+          checklist: [
+            "Spawn and complete the first gameplay objective",
+            "Confirm HUD, menus, settings, and mobile controls respond",
+            "Earn, spend, save, and reload the main currency",
+            "Check server output for missing remotes, assets, or DataStore errors",
+          ],
+        },
+        plan.phases.at(-1)?.title ?? "Final QA",
+      );
+    }
+    totalActions = rowsToInsert.length;
 
-    // Insert in chunks preserving order
-    if (rowsToInsert.length > 0) {
+    if (totalActions === 0) {
+      if (!isOwner) {
+        await supabase.rpc("refund_credits", {
+          _amount: cost,
+          _reason: "autopilot produced no valid Studio actions",
+        });
+      }
+      throw new Error(
+        "Autopilot could not produce any valid Studio actions. Your credits were refunded.",
+      );
+    }
+
+    const finalFiles = Array.from(finalFilesByPath.values());
+    const finalPaths = finalFiles.map((file) => file.path);
+    const { data: previousFileRows, error: previousFilesError } =
+      finalPaths.length > 0
+        ? await supabase
+            .from("project_files")
+            .select("id,path,file_type,service_location,content,created_at,updated_at")
+            .eq("project_id", projectId)
+            .in("path", finalPaths)
+        : { data: [], error: null };
+    if (previousFilesError) {
+      if (!isOwner) {
+        await supabase.rpc("refund_credits", {
+          _amount: cost,
+          _reason: "autopilot could not snapshot project files",
+        });
+      }
+      throw new Error("Could not prepare the project for Autopilot. Your credits were refunded.");
+    }
+
+    const previousFiles = previousFileRows ?? [];
+    const previousPathSet = new Set(previousFiles.map((file) => file.path));
+    const newPaths = finalPaths.filter((path) => !previousPathSet.has(path));
+    const insertedActionIds: string[] = [];
+    let generationId: string | null = null;
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+
+    try {
+      if (finalFiles.length > 0) {
+        const { error: filesError } = await supabase.from("project_files").upsert(
+          finalFiles.map((file) => ({
+            project_id: projectId,
+            path: file.path,
+            file_type: file.file_type,
+            service_location: file.service_location,
+            content: file.content,
+            updated_at: new Date().toISOString(),
+          })),
+          { onConflict: "project_id,path" },
+        );
+        if (filesError) throw new Error(`Could not persist Autopilot files: ${filesError.message}`);
+      }
+
+      // Insert in chunks while recording every inserted id. If a later chunk
+      // fails, the catch below removes the earlier chunks and restores files.
       const CHUNK = 50;
       for (let i = 0; i < rowsToInsert.length; i += CHUNK) {
-        const { error: queueErr } = await supabase
+        const stagingRows = rowsToInsert.slice(i, i + CHUNK).map((row) => ({
+          ...row,
+          status: "staging",
+        }));
+        const { data: insertedRows, error: queueErr } = await supabaseAdmin
           .from("plugin_actions")
-          .insert(rowsToInsert.slice(i, i + CHUNK));
+          .insert(stagingRows)
+          .select("id");
         if (queueErr) {
           throw new Error("Could not queue the autopilot actions for Studio.");
         }
+        insertedActionIds.push(...(insertedRows ?? []).map((row) => row.id));
       }
-    }
 
-    await supabase.from("generations").insert({
-      user_id: userId,
-      project_id: projectId,
-      prompt: `[autopilot] ${description.slice(0, 500)}`,
-      status: "success",
-      credits_used: isOwner ? 0 : cost,
-      result: plan as any,
-    });
+      if (partialFrontend && !isOwner) {
+        partialRefund = Math.max(1, Math.ceil(cost / 2));
+        const { error: refundError } = await supabase.rpc("refund_credits", {
+          _amount: partialRefund,
+          _reason: "autopilot frontend pass incomplete",
+        });
+        if (refundError) {
+          console.warn("[autopilotBuild] partial frontend refund failed:", refundError.message);
+          partialRefund = 0;
+        }
+      }
+
+      const { data: generationRow, error: generationError } = await supabase
+        .from("generations")
+        .insert({
+          user_id: userId,
+          project_id: projectId,
+          prompt: `[autopilot] ${description.slice(0, 500)}`,
+          status: "success",
+          credits_used: isOwner ? 0 : Math.max(0, cost - partialRefund),
+          result: {
+            ...plan,
+            autopilotRunId,
+            partial: partialFrontend,
+            creditsRefunded: partialRefund,
+            queuedActions: totalActions,
+          } as any,
+        })
+        .select("id")
+        .single();
+      if (generationError) {
+        throw new Error(`Could not record the Autopilot run: ${generationError.message}`);
+      }
+      generationId = generationRow.id;
+
+      // Staged rows are invisible to plugin polling. Publish the complete run
+      // only after every file, queue chunk, and generation record succeeded.
+      const { data: publishedRows, error: publishError } = await supabaseAdmin
+        .from("plugin_actions")
+        .update({ status: "pending" })
+        .in("id", insertedActionIds)
+        .eq("status", "staging")
+        .select("id");
+      if (publishError) {
+        throw new Error(`Could not publish the Autopilot queue: ${publishError.message}`);
+      }
+      if ((publishedRows ?? []).length !== insertedActionIds.length) {
+        throw new Error("Could not publish the complete Autopilot queue.");
+      }
+    } catch (writeError) {
+      if (insertedActionIds.length > 0) {
+        await supabaseAdmin.from("plugin_actions").delete().in("id", insertedActionIds);
+      }
+      if (generationId) {
+        await supabaseAdmin.from("generations").delete().eq("id", generationId);
+      }
+      if (newPaths.length > 0) {
+        await supabase
+          .from("project_files")
+          .delete()
+          .eq("project_id", projectId)
+          .in("path", newPaths);
+      }
+      if (previousFiles.length > 0) {
+        await supabase.from("project_files").upsert(
+          previousFiles.map((file) => ({
+            id: file.id,
+            project_id: projectId,
+            path: file.path,
+            file_type: file.file_type,
+            service_location: file.service_location,
+            content: file.content,
+            created_at: file.created_at,
+            updated_at: file.updated_at,
+          })),
+          { onConflict: "project_id,path" },
+        );
+      }
+      if (!isOwner) {
+        const refundAmount = Math.max(0, cost - partialRefund);
+        if (refundAmount > 0) {
+          await supabase.rpc("refund_credits", {
+            _amount: refundAmount,
+            _reason: "autopilot delivery failed and was rolled back",
+          });
+        }
+      }
+      const message = writeError instanceof Error ? writeError.message : String(writeError);
+      throw new Error(`Autopilot delivery failed and was rolled back: ${message}`);
+    }
 
     return {
       summary: plan.summary,
@@ -4502,10 +4781,13 @@ Build EVERYTHING. Ship the complete game.`;
         title: p.title,
         goal: p.goal,
         fileCount: p.files.length,
-        actionCount: p.actions.length,
+        actionCount: rowsToInsert.filter((row) => row.payload?._phase === p.title).length,
       })),
       totalFiles,
       totalActions,
+      autopilotRunId,
+      partial: partialFrontend,
+      creditsRefunded: partialRefund,
       validation: {
         errors: allErrors,
         warnings: allWarnings,

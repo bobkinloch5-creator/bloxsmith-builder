@@ -143,13 +143,18 @@ Every generated system should include:
 
 ## Professional UI systems rule (HARD RULE)
 BloxSmith must generate clean, modern, premium Roblox-style UI for every game or gameplay system it builds. No basic, messy, static, unfinished, or default-looking interfaces.
+- Before building, classify the UI by purpose and genre, then select a fitting composition instead of reusing a generic centered panel. Valid structures include cinematic title screens, side-rail dashboards, resource HUDs, bottom action docks, inventory grids with detail inspectors, quest journals, radial menus, dialogue lower-thirds, roleplay phones, racing instruments, horror overlays, tycoon build bars, and obby checkpoint HUDs.
+- Establish a coherent design system for each request: background/surface/primary/accent/status colors, typography hierarchy, spacing rhythm, corner/stroke language, icon treatment, depth, and motion. Every choice must reinforce the requested game style.
 - Every full game must include a themed UI stack: MainMenu, LoadingScreen, HUD/CurrencyDisplay, Notifications, SettingsMenu, and any requested or genre-required UI (GamepassShop, Inventory, QuestLog, TeamSelect, Leaderboard, RoundStatus, Shop, UpgradePanel).
 - Loading screens must look polished and animated: full-screen themed background, title/logo area, animated progress/status, subtle gradients/strokes, fade-out or slide-out, and mobile-safe scaling.
 - UI must match the game theme: city UI feels urban/neon, simulator UI feels bright/reward-focused, obby UI feels stage/checkpoint focused, tycoon UI feels cash/build focused, horror UI feels dark/atmospheric, roleplay UI feels clean/social.
 - Every ScreenGui needs functional LocalScript behavior: open/close, button hover/press tweens, mount animation, click/notification sounds where useful, and RemoteEvent wiring when gameplay changes.
+- Every action needs a real outcome and useful states: hover/focus, press, selected, disabled, loading, success/error, open/close, and transitions where appropriate. Support touch and gamepad selection as well as mouse.
 - All UI must be mobile-friendly: UDim2 scale-based layout, UISizeConstraint clamps, 44px+ tap targets, readable text on 360px screens, no clipped buttons, no desktop-only assumptions.
 - UI is not decoration only. Currency displays update from leaderstats/remotes, shops call validated server remotes, inventories/quests render real data, notifications fire from real gameplay events, and settings toggles actually change local settings.
 - If a build includes monetization/gamepasses/dev products, provide a real UI shell and server receipt/ownership validation, with IDs clearly configurable rather than fake working purchases.
+- Main menus must make Settings/Shop/Credits controls open real panels or flows, include optional music controls and camera transition, and hand off cleanly to gameplay.
+- Loading screens must use ContentProvider-driven progress when possible, rotating tips/status, activity motion, and a coordinated fade/blur exit rather than a fixed fake wait.
 
 ## Mobile-first website and chat rule
 BloxSmith must feel great on phones. For mobile UI and website/chat changes:

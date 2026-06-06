@@ -49,6 +49,32 @@ const checks = [
     ],
   },
   {
+    name: "Autopilot validates complete phases and publishes atomically",
+    file: "src/lib/ai.functions.ts",
+    must: [
+      /hasExpectedPhases/,
+      /incomplete or malformed phase output/,
+      /roblox_toolbox_asset_plan/,
+      /status:\s*"staging"/,
+      /_autopilotRunId/,
+      /_sequence/,
+      /delivery failed and was rolled back/,
+      /autopilot frontend pass incomplete/,
+      /playtest_ready/,
+    ],
+  },
+  {
+    name: "UI Generator supports server-priced selectable AI models",
+    file: "src/lib/ui-generator.functions.ts",
+    must: [
+      /UI_GENERATOR_MODELS/,
+      /modelId/,
+      /selectedModel\.credits/,
+      /selectedModel\.model/,
+      /ui_generator_failed/,
+    ],
+  },
+  {
     name: "Project memory is persisted and injected into AI prompts",
     file: "src/lib/ai-memory.server.ts",
     must: [
@@ -193,6 +219,18 @@ const evalCases = [
   {
     prompt: "Make a horror game flashlight, chase NPC, scary lighting and doors",
     expected: ["Lighting", "PathfindingService", "StarterPlayerScripts", "Workspace"],
+  },
+  {
+    prompt: "Create a premium main menu for a backrooms horror game",
+    expected: ["themed background", "Play flow", "Settings", "music", "mobile", "gamepad"],
+  },
+  {
+    prompt: "Make an animated loading screen that reflects real asset loading",
+    expected: ["ContentProvider", "progress", "rotating tips", "fade", "music"],
+  },
+  {
+    prompt: "Recreate the attached simulator screenshot as a playable game",
+    expected: ["composition", "UI anchors", "map layout", "core loop", "multiple images"],
   },
   {
     prompt: "Generate a Roblox thumbnail for my obby game",
