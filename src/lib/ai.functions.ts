@@ -1765,14 +1765,39 @@ end
   };
 }
 
-async function assertProjectOwner(supabase: any, projectId: string, userId: string) {
+// Build/edit access: the project owner OR an "editor" collaborator may run AI
+// builds, fixes, autopilot, chat, and queue plugin actions. Viewers get
+// read-only access through the project page and are rejected here with a clear
+// message. RLS (can_access_project) already limits this SELECT to the owner and
+// invited collaborators, so we just resolve the role for the edit gate.
+async function assertProjectOwner(
+  supabase: any,
+  projectId: string,
+  userId: string,
+  opts: { allowViewer?: boolean } = {},
+) {
   const { data: project, error } = await supabase
     .from("projects")
     .select("id,user_id")
     .eq("id", projectId)
-    .eq("user_id", userId)
     .maybeSingle();
   if (error || !project) throw new Error("Project not found or unauthorized.");
+  if (project.user_id === userId) return; // owner — full access
+
+  const { data: collab } = await supabase
+    .from("project_collaborators")
+    .select("role")
+    .eq("project_id", projectId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (!collab) throw new Error("Project not found or unauthorized.");
+  // Viewers may use non-mutating features (e.g. chat Q&A) when allowViewer is
+  // set; building/editing always requires the owner or an "editor" collaborator.
+  if (!opts.allowViewer && collab.role !== "editor") {
+    throw new Error(
+      "You have view-only access to this project. Ask the owner to make you an editor to build or change it.",
+    );
+  }
 }
 
 function compactForAI(value: string, maxChars: number): string {
@@ -2975,7 +3000,9 @@ export const chatWithAI = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const { projectId, prompt, history, thinking, attachments } = data;
-    if (projectId) await assertProjectOwner(supabase, projectId, userId);
+    // Chat is read-only (never queues files/actions), so any collaborator —
+    // including viewers — may ask the AI about a shared project.
+    if (projectId) await assertProjectOwner(supabase, projectId, userId, { allowViewer: true });
 
     const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", userId);
     const isOwner = (roles ?? []).some((r) => r.role === "owner" || r.role === "admin");

@@ -48,6 +48,31 @@ const tagStyles = {
 
 export const changelogItems = [
   {
+    version: "v3.9.3",
+    date: "June 6, 2026",
+    title: "Collaborators Can Build Together",
+    description:
+      "Invited collaborators can now actually work on a shared project — editors build, fix, and run Autopilot with their own credits, and viewers can open it and ask the AI questions — instead of being blocked by owner-only checks.",
+    updates: [
+      {
+        category: "Tools",
+        tagColor: tagStyles.tools,
+        icon: Users,
+        title: "Shared Project Building",
+        detail:
+          "Editor collaborators can now open a shared project and run the full AI pipeline — build, fix, Autopilot, AI memory, and queue actions to Studio — using their own credits, and their builds reach the connected Studio plugin like the owner's. Previously invited collaborators hit 'Project not found or unauthorized' on every build.",
+      },
+      {
+        category: "Tools",
+        tagColor: tagStyles.tools,
+        icon: ShieldCheck,
+        title: "Editor vs. Viewer Roles",
+        detail:
+          "Roles are enforced everywhere now: editors build and change the project, viewers get read-only access — they can open the project, browse files, and ask the AI questions, but not build or change it. Only the owner manages the team.",
+      },
+    ],
+  },
+  {
     version: "v3.9.2",
     date: "June 6, 2026",
     title: "Self-Repairing Builds, Autopilot Full Games & Docs Sync Fix",

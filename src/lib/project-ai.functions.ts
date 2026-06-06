@@ -24,14 +24,35 @@ const GetSchema = z.object({
   projectId: z.string().uuid(),
 });
 
-async function assertProjectOwner(supabase: any, projectId: string, userId: string) {
+// Owner OR collaborator access. Reading the AI config is allowed for any
+// member; saving project AI settings (requireEdit) needs the owner or an
+// "editor" collaborator. RLS already scopes this SELECT to project members.
+async function assertProjectAccess(
+  supabase: any,
+  projectId: string,
+  userId: string,
+  opts: { requireEdit?: boolean } = {},
+) {
   const { data: project, error } = await supabase
     .from("projects")
-    .select("id")
+    .select("id,user_id")
     .eq("id", projectId)
-    .eq("user_id", userId)
     .maybeSingle();
   if (error || !project) throw new Error("Project not found or unauthorized.");
+  if (project.user_id === userId) return; // owner — full access
+
+  const { data: collab } = await supabase
+    .from("project_collaborators")
+    .select("role")
+    .eq("project_id", projectId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (!collab) throw new Error("Project not found or unauthorized.");
+  if (opts.requireEdit && collab.role !== "editor") {
+    throw new Error(
+      "You have view-only access to this project — only editors can change its AI settings.",
+    );
+  }
 }
 
 export const getProjectAiConfig = createServerFn({ method: "POST" })
@@ -40,7 +61,7 @@ export const getProjectAiConfig = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const { projectId } = data;
-    await assertProjectOwner(supabase, projectId, userId);
+    await assertProjectAccess(supabase, projectId, userId);
 
     const [settingsRes, keysRes] = await Promise.all([
       supabase
@@ -73,7 +94,7 @@ export const saveProjectAiSettings = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => SaveSettingsSchema.parse(input))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    await assertProjectOwner(supabase, data.projectId, userId);
+    await assertProjectAccess(supabase, data.projectId, userId, { requireEdit: true });
     const payload = {
       project_id: data.projectId,
       user_id: userId,

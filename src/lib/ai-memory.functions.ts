@@ -13,14 +13,33 @@ const ForgetSchema = z.object({
   id: z.string().uuid(),
 });
 
-async function assertProjectOwner(supabase: any, projectId: string, userId: string) {
-  const { data, error } = await supabase
+// Owner OR collaborator access. Reads are allowed for any member (viewer or
+// editor); writes (requireEdit) need the owner or an "editor" collaborator.
+// RLS already scopes this SELECT to the owner + invited collaborators.
+async function assertProjectAccess(
+  supabase: any,
+  projectId: string,
+  userId: string,
+  opts: { requireEdit?: boolean } = {},
+) {
+  const { data: project, error } = await supabase
     .from("projects")
-    .select("id")
+    .select("id,user_id")
     .eq("id", projectId)
+    .maybeSingle();
+  if (error || !project) throw new Error("Project not found or unauthorized.");
+  if (project.user_id === userId) return; // owner — full access
+
+  const { data: collab } = await supabase
+    .from("project_collaborators")
+    .select("role")
+    .eq("project_id", projectId)
     .eq("user_id", userId)
     .maybeSingle();
-  if (error || !data) throw new Error("Project not found or unauthorized.");
+  if (!collab) throw new Error("Project not found or unauthorized.");
+  if (opts.requireEdit && collab.role !== "editor") {
+    throw new Error("You have view-only access to this project — only editors can change AI memory.");
+  }
 }
 
 function memoryKey(value: string) {
@@ -38,7 +57,7 @@ export const listProjectAiMemories = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => ProjectSchema.parse(input))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    await assertProjectOwner(supabase, data.projectId, userId);
+    await assertProjectAccess(supabase, data.projectId, userId);
     const { data: rows, error } = await supabase
       .from("project_ai_memories")
       .select("id,key,kind,value,confidence,updated_at,last_seen_at")
@@ -54,7 +73,7 @@ export const rememberProjectNote = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => RememberSchema.parse(input))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    await assertProjectOwner(supabase, data.projectId, userId);
+    await assertProjectAccess(supabase, data.projectId, userId, { requireEdit: true });
     const clean = data.value.replace(/\s+/g, " ").trim();
     const { error } = await supabase.from("project_ai_memories").upsert(
       {
@@ -78,7 +97,7 @@ export const forgetProjectAiMemory = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => ForgetSchema.parse(input))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    await assertProjectOwner(supabase, data.projectId, userId);
+    await assertProjectAccess(supabase, data.projectId, userId, { requireEdit: true });
     const { error } = await supabase
       .from("project_ai_memories")
       .delete()

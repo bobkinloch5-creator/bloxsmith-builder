@@ -800,11 +800,13 @@ function ProjectEditor() {
   useEffect(() => {
     if (!user) return;
     (async () => {
+      // No user_id filter: RLS (can_access_project) already scopes this to the
+      // owner AND invited collaborators, so shared projects open for the whole
+      // team instead of only the owner.
       const { data: p } = await supabase
         .from("projects")
         .select("*")
         .eq("id", projectId)
-        .eq("user_id", user.id)
         .maybeSingle();
       if (!p) return toast.error("Project not found");
       setProject(p as Project);

@@ -2,6 +2,12 @@
 
 ## Latest Updates
 
+### Collaborators Can Build Together
+
+- Invited collaborators can now actually work on a shared project. The AI build pipeline (generate, fix, Autopilot, apply, plan, queue-to-Studio) plus project AI memory and AI settings now recognize collaborators, not just the project owner — previously every collaborator hit "Project not found or unauthorized" the moment they tried to build.
+- Editor collaborators get full build access using their own credits, and their queued actions reach the connected Studio plugin exactly like the owner's. Viewers get read-only access: they can open the project, browse files, and ask the AI questions, but cannot build or change it. Only the owner manages the team (invite, role, remove).
+- Fixed the project page so shared projects open for collaborators (it previously loaded only projects you own). Row-Level Security still restricts every project to its owner and invited collaborators, so nothing else is exposed.
+
 ### Self-Repairing Builds, Autopilot Full Games & Docs Sync Fallback
 
 - Every build, fix, and Autopilot run now auto-repairs generated Luau before the pre-push sync check: missing `end`/bracket closers are added, misplaced LocalScripts/Scripts are reparented to valid services, missing parent folders are created, casing is normalized, and structural actions are sorted parent-before-child — so a script that was only one `end` short is healed instead of dropped (previously these were silently discarded in the main build, fix, and Autopilot paths).
