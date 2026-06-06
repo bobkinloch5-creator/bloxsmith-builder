@@ -48,6 +48,31 @@ const tagStyles = {
 
 export const changelogItems = [
   {
+    version: "v3.10.1",
+    date: "June 6, 2026",
+    title: "Hardened UI Studio Handoff & Consistent Starter Credits",
+    description:
+      "Added complete step-by-step instructions to the UI Generator for inserting generated assets into Roblox Studio, and standardized the platform starter credit count to 100.",
+    updates: [
+      {
+        category: "UI",
+        tagColor: tagStyles.ui,
+        icon: Palette,
+        title: "Roblox Studio UI Insertion Guides",
+        detail:
+          "Added clear, interactive guides to the UI Generator page outlining the recommended workflow for syncing ScreenGuis via the BloxSmith Studio plugin, as well as alternative manual copy-paste instructions for Luau scripts, ServerScripts, and RemoteEvents.",
+      },
+      {
+        category: "Backend",
+        tagColor: tagStyles.backend,
+        icon: CreditCard,
+        title: "Standardized Starter Credits",
+        detail:
+          "Standardized starter credits to 100 across the entire platform including the landing page, registration form, pricing packages, FAQs, and onboarding documentation for consistent pricing transparency.",
+      },
+    ],
+  },
+  {
     version: "v3.10.0",
     date: "June 6, 2026",
     title: "Model-Priced UI Generator",

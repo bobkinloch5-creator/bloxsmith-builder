@@ -641,10 +641,36 @@ function UIGeneratorPage() {
                   )}
                   {inserting ? "Queueing…" : "Insert into Roblox Studio"}
                 </button>
-                <p className="text-[10.5px] leading-normal text-muted-foreground/80">
-                  Queues {result.actions.length} Studio actions. Open Studio with the plugin
-                  connected and run Sync.
-                </p>
+                <div className="mt-1 rounded-xl border border-border/60 bg-background/20 p-3 space-y-2.5">
+                  <h3 className="text-[10px] font-black uppercase tracking-wider text-primary-glow flex items-center gap-1.5">
+                    <Send className="h-3 w-3" /> How to add this UI to Roblox Studio
+                  </h3>
+                  <div className="space-y-1.5">
+                    <p className="text-[10.5px] leading-relaxed text-muted-foreground font-semibold">
+                      Method 1 — Plugin Sync (recommended)
+                    </p>
+                    <ol className="text-[10.5px] leading-relaxed text-muted-foreground list-decimal list-inside space-y-0.5 pl-1">
+                      <li>Select your project above and click <strong className="text-foreground">"Insert into Roblox Studio"</strong>.</li>
+                      <li>Open <strong className="text-foreground">Roblox Studio</strong> with the <strong className="text-foreground">BloxSmith plugin</strong> installed.</li>
+                      <li>Make sure the plugin is <strong className="text-foreground">connected</strong> (paste your token from the Account page).</li>
+                      <li>Click <strong className="text-foreground">Sync</strong> in the plugin — {result.actions.length} actions will be applied automatically.</li>
+                      <li>The ScreenGui, scripts, and RemoteEvents will appear in their correct locations.</li>
+                    </ol>
+                  </div>
+                  <div className="space-y-1.5">
+                    <p className="text-[10.5px] leading-relaxed text-muted-foreground font-semibold">
+                      Method 2 — Manual copy-paste
+                    </p>
+                    <ol className="text-[10.5px] leading-relaxed text-muted-foreground list-decimal list-inside space-y-0.5 pl-1">
+                      <li>Go to the <strong className="text-foreground">Luau</strong> tab in the preview panel.</li>
+                      <li>Copy the <strong className="text-foreground">LocalScript</strong> code.</li>
+                      <li>In Studio, add a <strong className="text-foreground">ScreenGui</strong> to <strong className="text-foreground">StarterGui</strong>.</li>
+                      <li>Create a <strong className="text-foreground">LocalScript</strong> inside the ScreenGui and paste the code.</li>
+                      <li>If there is a <strong className="text-foreground">ServerScript</strong>, create a Script in <strong className="text-foreground">ServerScriptService</strong> and paste it.</li>
+                      <li>Add any listed <strong className="text-foreground">RemoteEvents</strong> to <strong className="text-foreground">ReplicatedStorage</strong>.</li>
+                    </ol>
+                  </div>
+                </div>
               </section>
             )}
           </aside>
