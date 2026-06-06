@@ -48,6 +48,145 @@ const tagStyles = {
 
 export const changelogItems = [
   {
+    version: "v3.9.9",
+    date: "June 6, 2026",
+    title: "Reliable Autopilot & Atomic Studio Delivery",
+    description:
+      "Autopilot now rejects incomplete phase plans, retries malformed output, publishes complete builds to Studio as one staged batch, rolls back failed delivery, and handles partial frontend builds with clear status and automatic refunds.",
+    updates: [
+      {
+        category: "AI",
+        tagColor: tagStyles.ai,
+        icon: Rocket,
+        title: "Complete Six-Phase Generation",
+        detail:
+          "The backbone must return Structure, Shared Modules, and Server Systems, while the second pass must return Client Controllers, UI, and World. Missing or malformed phases receive one bounded retry instead of being silently treated as a complete game. The backbone no longer wastes tool steps on visual searches, while the world pass can use the efficient full Toolbox asset planner.",
+      },
+      {
+        category: "Security",
+        tagColor: tagStyles.security,
+        icon: ShieldCheck,
+        title: "Atomic Ordered Studio Queue",
+        detail:
+          "Autopilot actions are de-duplicated, assigned a run ID and deterministic sequence, and inserted with a hidden staging status. Project files and the generation record must succeed before the complete batch becomes visible to the Studio plugin. A failed delivery removes staged actions and restores changed files.",
+      },
+      {
+        category: "Backend",
+        tagColor: tagStyles.backend,
+        icon: CreditCard,
+        title: "Fair Rollbacks & Partial Refunds",
+        detail:
+          "Critical backbone phases that are fully blocked by validation now stop the run and refund it. If the optional client/UI/world pass still cannot finish after retrying, Autopilot keeps the valid backbone, clearly marks the result partial, and refunds half of the charged credits automatically.",
+      },
+      {
+        category: "Tools",
+        tagColor: tagStyles.tools,
+        icon: Wrench,
+        title: "Studio Playtest Handoff",
+        detail:
+          "Every successful Autopilot run now ends with a playtest-ready action that focuses the build and gives Studio a concrete checklist for the core gameplay loop, HUD and menus, mobile controls, currency saving, remotes, assets, DataStores, and output errors.",
+      },
+    ],
+  },
+  {
+    version: "v3.9.8",
+    date: "June 6, 2026",
+    title: "Secure Admin Operations & Recovery Tools",
+    description:
+      "The admin panel now runs sensitive operations through protected server functions, exposes stronger account recovery and moderation tools, and gives staff clearer feedback when managing users, payments, promotions, and promo codes.",
+    updates: [
+      {
+        category: "Security",
+        tagColor: tagStyles.security,
+        icon: ShieldCheck,
+        title: "Server-Authoritative Administration",
+        detail:
+          "User, credit, role, payment, promotion, promo-code, and AI usage actions now use authenticated service-role server functions instead of browser-side database mutations. Owner accounts and admin targets are protected, sensitive actions require the correct role, and changes are written to the moderator audit log.",
+      },
+      {
+        category: "Tools",
+        tagColor: tagStyles.tools,
+        icon: Users,
+        title: "Account Recovery Controls",
+        detail:
+          "Admins can ban or unban users, set an exact credit balance, grant or remove credits, copy account IDs, and reset AI rate-limit history. Credit updates clamp safely at zero and support both current and legacy ledger schemas with accurate grant and spend records.",
+      },
+      {
+        category: "Backend",
+        tagColor: tagStyles.backend,
+        icon: CreditCard,
+        title: "Hardened Reviews & Promotions",
+        detail:
+          "Payment and promotion reviews now validate status and amounts on the server, attach reviewer metadata, grant approved credits safely, and create audit records. Promo-code creation, editing, activation, and deletion follow the same protected path.",
+      },
+      {
+        category: "UI",
+        tagColor: tagStyles.ui,
+        icon: LayoutDashboard,
+        title: "Clearer Admin Dashboard",
+        detail:
+          "A consolidated secure dashboard request now loads users, roles, projects, generations, pending reviews, promo codes, credit activity, and moderator actions. New health cards, manual refresh, loading and error states, action locks, filtered empty states, and corrected email-confirmation feedback make day-to-day administration more reliable.",
+      },
+    ],
+  },
+  {
+    version: "v3.9.7",
+    date: "June 6, 2026",
+    title: "Universal UI Intelligence & Screenshot Reconstruction",
+    description:
+      "BloxSmith now understands a much wider range of Roblox interface styles, generates genuinely premium main menus and loading screens, and can use multiple screenshots to reconstruct a game's map, UI, mood, and gameplay more faithfully.",
+    updates: [
+      {
+        category: "AI",
+        tagColor: tagStyles.ai,
+        icon: Bot,
+        title: "Genre-Aware UI Intelligence",
+        detail:
+          "GUI requests are now classified by purpose and game genre before generation. BloxSmith chooses an appropriate composition, palette, typography, spacing, depth, motion, and interaction model for shops, inventories, quests, simulator HUDs, horror/backrooms overlays, roleplay phones, tycoon build bars, obby checkpoints, racing instruments, dialogue, and other custom interfaces instead of reusing one generic panel.",
+      },
+      {
+        category: "UI",
+        tagColor: tagStyles.ui,
+        icon: Menu,
+        title: "Premium Main Menus",
+        detail:
+          "Main menus now use full-screen themed layouts with a dominant Play flow, player/update/reward content, animated buttons, functional Settings and Shop panels, music and effects controls, clean gameplay handoff, mobile-safe sizing, and gamepad-selectable controls.",
+      },
+      {
+        category: "UI",
+        tagColor: tagStyles.ui,
+        icon: Clock,
+        title: "Real Animated Loading Screens",
+        detail:
+          "Loading screens now have their own generator with branded title treatment, real ContentProvider asset progress, percentage and status updates, rotating tips, an animated activity indicator, optional music control, and a coordinated fade exit instead of a fake fixed wait or recycled menu layout.",
+      },
+      {
+        category: "AI",
+        tagColor: tagStyles.ai,
+        icon: ImageIcon,
+        title: "Multi-Image Screenshot to Game",
+        detail:
+          "Screenshot to Game now accepts and forwards up to four reference images through both primary and fallback vision models. It analyzes camera/FOV, player scale, composition, map routes, landmarks, materials, lighting, UI anchors, props, characters, enemies, and the implied gameplay loop, using extra views to resolve hidden sides and alternate states.",
+      },
+      {
+        category: "Tools",
+        tagColor: tagStyles.tools,
+        icon: Sparkles,
+        title: "Richer UI Generator",
+        detail:
+          "Added Horror, Simulator, Fantasy, Sci-Fi, Retro, and Luxury styles plus responsive padding, visibility states, clipping, rotation, aspect-ratio constraints, wrapped/scaled text, image scaling, selectable controls, and matching website previews. Hidden modal panels now stay hidden until opened.",
+      },
+      {
+        category: "Security",
+        tagColor: tagStyles.security,
+        icon: ShieldCheck,
+        title: "Safer Functional UI",
+        detail:
+          "Deterministic interactive UI now uses type checks, request cooldowns, allowed-action guards, and real state updates instead of placeholder server handlers. New reliability evaluations cover premium backrooms menus, real loading progress, and screenshot-driven simulator reconstruction.",
+      },
+    ],
+  },
+  {
     version: "v3.9.6",
     date: "June 6, 2026",
     title: "More Genre Build Patterns + Verified in Studio",

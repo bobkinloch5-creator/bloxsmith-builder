@@ -458,7 +458,7 @@ function ProjectEditor() {
     setAttachments((prev) => prev.filter((_, idx) => idx !== i));
   const startScreenshotToGameTool = () => {
     setPrompt(
-      "Use my attached game screenshot as a reference and build a playable Roblox-style starter game inspired by it. Analyze the genre, camera angle, map layout, colors, UI/HUD, lighting, props, characters/enemies, and likely core loop. Recreate the feel in a Roblox-safe way without copying protected logos or exact characters. Add a real Workspace map, spawn point, basic gameplay scripts, starter UI, lighting, and a short checklist for what to test in Play mode.",
+      "Screenshot-to-game reconstruction. Treat every attached image as a visual specification. First infer the genre, player goal, camera, scale, spatial layout, landmarks, traversal routes, palette, materials, lighting, atmosphere, UI hierarchy, visible text, controls, props, characters/enemies, and likely core loop. Then build a cohesive playable Roblox-safe version that preserves the composition and feel without copying protected logos or exact copyrighted characters. Recreate the visible map with intentional geometry and representative assets; implement the core gameplay loop with complete server/client scripts, remotes, spawn/checkpoints/objectives as needed; reproduce the visible HUD/menu responsively; match Lighting, post effects, VFX, and audio mood; organize everything into proper Roblox services. Do not return a description-only answer, empty folders, random filler, or a generic template unrelated to the screenshot. Where details are hidden, infer the smallest polished system consistent with the evidence. End with a short Play-mode verification checklist and clearly note only the details that had to be inferred.",
     );
     setThinking(true);
     setPlanMode(false);
@@ -1355,7 +1355,7 @@ function ProjectEditor() {
           preview: !autoExecute,
           thinking: opts?.forceThinking ?? thinking,
           ...(mapStrategy ? { mapStrategy } : {}),
-          ...(imgs.length && /^data:image\//.test(imgs[0]) ? { imageDataUrl: imgs[0] } : {}),
+          ...(imgs.length ? { imageDataUrls: imgs } : {}),
         },
       })) as {
         message: string;
@@ -1924,18 +1924,29 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
               )
               .join("")
           : "";
-      const summary = `${out.summary}\n\nBuild plan:\n${phaseList}${assumptions}\n\nQueued ${out.totalActions} actions covering ${out.totalFiles} files. Waiting for the Studio plugin to confirm each action before calling it applied.${vLine}`;
+      const partialLine = out.partial
+        ? `\n\nPartial delivery: the server backbone was queued, but the client/UI/world pass did not complete after its retry. ${out.creditsRefunded ?? 0} credit${out.creditsRefunded === 1 ? "" : "s"} refunded automatically.`
+        : "";
+      const summary = `${out.summary}\n\nBuild plan:\n${phaseList}${assumptions}\n\nQueued ${out.totalActions} ordered actions covering ${out.totalFiles} files. The complete batch was staged and published together; waiting for the Studio plugin to confirm each action before calling it applied.${partialLine}${vLine}`;
       await pushMsg("assistant", summary, {
         kind: "autopilot",
         phases: out.phases?.length,
         totalActions: out.totalActions,
+        partial: out.partial,
+        creditsRefunded: out.creditsRefunded,
+        autopilotRunId: out.autopilotRunId,
         validation: v,
       });
       setAutoDesc("");
       setShowAuto(false);
-      toast.success(
-        `Autopilot queued ${out.totalActions} actions${v?.errors ? ` · ${v.errors} blocked by sync check` : ""}`,
-      );
+      const toastMessage = `Autopilot queued ${out.totalActions} actions${v?.errors ? ` · ${v.errors} blocked by sync check` : ""}`;
+      if (out.partial) {
+        toast.warning(
+          `${toastMessage} · partial build, ${out.creditsRefunded ?? 0} credits refunded`,
+        );
+      } else {
+        toast.success(toastMessage);
+      }
     } catch (e: any) {
       const msg = String(e?.message ?? "Failed");
       toast.error(msg);
@@ -3888,8 +3899,10 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                       ))}
                     </div>
                     <div className="border-t border-border pt-2 text-[11px] text-muted-foreground">
-                      Charged once up-front ({AUTOPILOT_COST} credits). Refunded automatically if
-                      the build fails before any files are written.
+                      Base price: {AUTOPILOT_COST} credits; premium model multipliers may increase
+                      the final price. Failed runs are rolled back and refunded. If the optional
+                      UI/world pass cannot finish after retrying, the completed backbone is kept and
+                      half the charged credits are refunded.
                     </div>
                   </div>
                 );

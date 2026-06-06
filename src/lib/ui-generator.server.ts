@@ -47,6 +47,7 @@ const ElementBase = {
   size: Udim2.optional(),
   anchorPoint: z.object({ x: z.number(), y: z.number() }).optional(),
   zIndex: z.number().int().min(0).max(100).optional(),
+  visible: z.boolean().optional(),
   backgroundColor: Color.optional(),
   backgroundTransparency: z.number().min(0).max(1).optional(),
   cornerRadius: z.number().int().min(0).max(240).optional(),
@@ -59,6 +60,9 @@ const ElementBase = {
       rotation: z.number().min(0).max(360).default(90),
     })
     .optional(),
+  padding: z.number().int().min(0).max(80).optional(),
+  clipsDescendants: z.boolean().optional(),
+  rotation: z.number().min(-360).max(360).optional(),
 };
 
 type UIElement = {
@@ -70,11 +74,16 @@ type UIElement = {
   textSize?: number;
   font?: string;
   textAlign?: "Left" | "Center" | "Right";
+  textWrapped?: boolean;
+  textScaled?: boolean;
   image?: string; // rbxassetid:// or asset id number string
+  imageTransparency?: number;
+  scaleType?: "Crop" | "Fit" | "Stretch" | "Slice" | "Tile";
   position?: z.infer<typeof Udim2>;
   size?: z.infer<typeof Udim2>;
   anchorPoint?: { x: number; y: number };
   zIndex?: number;
+  visible?: boolean;
   backgroundColor?: { r: number; g: number; b: number };
   backgroundTransparency?: number;
   cornerRadius?: number;
@@ -85,6 +94,10 @@ type UIElement = {
     to: { r: number; g: number; b: number };
     rotation: number;
   };
+  padding?: number;
+  clipsDescendants?: boolean;
+  rotation?: number;
+  aspectRatio?: number;
   layout?: "List" | "Grid" | "None";
   layoutDirection?: "Vertical" | "Horizontal";
   layoutPadding?: number;
@@ -109,7 +122,12 @@ const UIElementSchema: z.ZodType<UIElement> = z.lazy(() =>
     textSize: z.number().int().min(8).max(64).optional(),
     font: z.string().max(40).optional(),
     textAlign: z.enum(["Left", "Center", "Right"]).optional(),
+    textWrapped: z.boolean().optional(),
+    textScaled: z.boolean().optional(),
     image: z.string().max(120).optional(),
+    imageTransparency: z.number().min(0).max(1).optional(),
+    scaleType: z.enum(["Crop", "Fit", "Stretch", "Slice", "Tile"]).optional(),
+    aspectRatio: z.number().positive().max(10).optional(),
     layout: z.enum(["List", "Grid", "None"]).optional(),
     layoutDirection: z.enum(["Vertical", "Horizontal"]).optional(),
     layoutPadding: z.number().int().min(0).max(80).optional(),
@@ -168,7 +186,20 @@ export const UI_CATEGORIES = [
 
 export type UICategory = (typeof UI_CATEGORIES)[number];
 
-export const UI_STYLES = ["Modern", "Neon", "Minimal", "Cartoon", "Glass", "Anime"] as const;
+export const UI_STYLES = [
+  "Modern",
+  "Neon",
+  "Minimal",
+  "Cartoon",
+  "Glass",
+  "Anime",
+  "Horror",
+  "Simulator",
+  "Fantasy",
+  "Sci-Fi",
+  "Retro",
+  "Luxury",
+] as const;
 export type UIStyle = (typeof UI_STYLES)[number];
 
 const UI_AI_TIMEOUT_MS = 12_000;
@@ -185,6 +216,18 @@ const STYLE_HINTS: Record<UIStyle, string> = {
   Glass:
     "Semi-transparent backgrounds (0.3-0.5 transparency), subtle gradients, frosted look, thin white strokes.",
   Anime: "Pastel/vivid gradients, sharp accents, decorative strokes, rounded but stylized.",
+  Horror:
+    "Near-black layered surfaces, restrained blood-red or sickly accent, distressed spacing, vignette-like overlays, tense readable hierarchy.",
+  Simulator:
+    "Bright reward-focused palette, chunky counters, glossy cards, rarity colors, large mobile actions, satisfying progress emphasis.",
+  Fantasy:
+    "Deep jewel tones, gold trim, parchment or magical-glass panels, ornamental headers, elegant readable hierarchy.",
+  "Sci-Fi":
+    "Dark technical surfaces, cyan/magenta energy accents, segmented panels, status readouts, holographic gradients.",
+  Retro:
+    "Arcade-inspired high contrast, pixel-like spacing, bold blocks, scanline accents, limited intentional palette.",
+  Luxury:
+    "Black/charcoal surfaces, gold or platinum accents, restrained gradients, generous spacing, premium editorial hierarchy.",
 };
 
 export const UI_SYSTEM_PROMPT = `You are BloxSmith's Roblox UI Generator. You design beautiful, production-ready Roblox ScreenGui layouts.
@@ -202,9 +245,11 @@ Return a single JSON object matching the UISpec schema:
 LAYOUT RULES
 - Root Frame should fill the screen or center a modal. Use Scale (not Offset) so it scales on all devices.
 - Use anchorPoint {x:0.5, y:0.5} + position {xScale:0.5, yScale:0.5} for centered modals.
+- Use padding on panels/containers instead of manually crowding children against edges. Use textWrapped/textScaled selectively for responsive headings and labels.
 - Make the UI look premium: layered panels, clear hierarchy, vivid accent borders, gradients, decorative badges, status rows, and strong Roblox game readability.
 - Never ship an empty/simple one-card GUI. Every result needs at least: themed background, headline/title, subtitle/status text, 3-6 primary actions, at least one secondary panel/card/list, close/back affordance when appropriate, and a LocalScript that wires clicks + hover/press feedback.
 - Main menus must feel like a real Roblox game's first screen: title/logo area, Play as the dominant CTA, Settings/Shop/Credits/Servers or Updates, a news/updates card, a player/profile or reward card, footer/version text, animated entry, hover grow, press squish, and Play should hide the menu.
+- Loading screens are their own composition, not a main menu. Include branded title/logo treatment, progress track + fill, percentage/status, rotating tips, loading activity animation, optional skip/music control, real ContentProvider preload progress, and a coordinated fade/blur exit.
 - For vague prompts like "make a menu", infer a complete, polished main menu shell instead of asking follow-up questions.
 - For HUDs, include currency/resource counters, objective/quest text, compact buttons, notification/toast area, and mobile-safe spacing.
 - For shops/inventories/rewards, include item cards with labels, price/rarity/status badges, primary CTA, selected-state behavior in LocalScript, and server RemoteEvents when rewards or purchases matter.
@@ -512,6 +557,316 @@ function buttonTextForCategory(category: UICategory) {
   return ["Play", "Shop", "Settings", "Close"];
 }
 
+function createLoadingScreenUISpec(opts: {
+  style: UIStyle;
+  prompt: string;
+  primaryColor?: { r: number; g: number; b: number };
+  accentColor?: { r: number; g: number; b: number };
+  bgColor?: { r: number; g: number; b: number };
+  title?: string;
+}): UISpec {
+  const primary = opts.primaryColor ?? { r: 245, g: 158, b: 11 };
+  const accent = opts.accentColor ?? { r: 139, g: 92, b: 246 };
+  const bg = opts.bgColor ?? { r: 8, g: 12, b: 24 };
+  const title = opts.title?.trim() || "Loading Adventure";
+  const screenGuiName = safeInstanceName(`${title}Gui`, "BloxSmithLoadingGui");
+  const variant = stableHash(`${opts.style}|${opts.prompt}|${title}`) % 4;
+  const backgroundLayers = themedBackgroundLayers({
+    prompt: `loading screen ${opts.style} ${opts.prompt}`,
+    primary,
+    accent,
+    bg,
+    variant,
+  });
+
+  return normalizeUISpec(
+    {
+      title,
+      screenGuiName,
+      mobileFriendly: true,
+      description:
+        "Animated Roblox loading screen with real preload progress, rotating tips, music toggle, activity indicator, and coordinated fade exit.",
+      root: {
+        type: "Frame",
+        id: "RootFrame",
+        name: "RootFrame",
+        position: { xScale: 0, xOffset: 0, yScale: 0, yOffset: 0 },
+        size: { xScale: 1, xOffset: 0, yScale: 1, yOffset: 0 },
+        backgroundColor: bg,
+        clipsDescendants: true,
+        children: [
+          ...backgroundLayers,
+          {
+            type: "Frame",
+            id: "AmbientGlow",
+            name: "AmbientGlow",
+            anchorPoint: { x: 0.5, y: 0.5 },
+            position: { xScale: 0.5, xOffset: 0, yScale: 0.46, yOffset: 0 },
+            size: { xScale: 0, xOffset: 520, yScale: 0, yOffset: 520 },
+            backgroundColor: primary,
+            backgroundTransparency: 0.82,
+            cornerRadius: 240,
+            gradient: { from: primary, to: accent, rotation: 45 },
+            zIndex: 2,
+          },
+          {
+            type: "Frame",
+            id: "BrandPanel",
+            name: "BrandPanel",
+            anchorPoint: { x: 0.5, y: 0.5 },
+            position: { xScale: 0.5, xOffset: 0, yScale: 0.43, yOffset: 0 },
+            size: { xScale: 0.7, xOffset: 0, yScale: 0, yOffset: 280 },
+            backgroundColor: mixColor(bg, { r: 255, g: 255, b: 255 }, 0.06),
+            backgroundTransparency: opts.style === "Glass" ? 0.28 : 0.1,
+            cornerRadius: opts.style === "Cartoon" ? 30 : 24,
+            strokeColor: mixColor(primary, accent, 0.45),
+            strokeThickness: 2,
+            padding: 28,
+            zIndex: 4,
+            children: [
+              {
+                type: "TextLabel",
+                id: "EyebrowLabel",
+                name: "EyebrowLabel",
+                text: "PREPARING YOUR EXPERIENCE",
+                textColor: primary,
+                textSize: 14,
+                font: "GothamBlack",
+                position: { xScale: 0, xOffset: 0, yScale: 0.02, yOffset: 0 },
+                size: { xScale: 1, xOffset: 0, yScale: 0, yOffset: 24 },
+                backgroundTransparency: 1,
+                zIndex: 5,
+              },
+              {
+                type: "TextLabel",
+                id: "TitleLabel",
+                name: "TitleLabel",
+                text: title,
+                textColor: { r: 255, g: 255, b: 255 },
+                textSize: 46,
+                textScaled: true,
+                font: opts.style === "Cartoon" ? "LuckiestGuy" : "GothamBlack",
+                position: { xScale: 0.08, xOffset: 0, yScale: 0.15, yOffset: 0 },
+                size: { xScale: 0.84, xOffset: 0, yScale: 0, yOffset: 70 },
+                backgroundTransparency: 1,
+                zIndex: 5,
+              },
+              {
+                type: "TextLabel",
+                id: "StatusLabel",
+                name: "StatusLabel",
+                text: "Connecting to the world...",
+                textColor: { r: 226, g: 232, b: 240 },
+                textSize: 17,
+                font: "GothamBold",
+                position: { xScale: 0.08, xOffset: 0, yScale: 0.46, yOffset: 0 },
+                size: { xScale: 0.7, xOffset: 0, yScale: 0, yOffset: 30 },
+                backgroundTransparency: 1,
+                textAlign: "Left",
+                zIndex: 5,
+              },
+              {
+                type: "TextLabel",
+                id: "PercentLabel",
+                name: "PercentLabel",
+                text: "0%",
+                textColor: { r: 255, g: 255, b: 255 },
+                textSize: 18,
+                font: "GothamBlack",
+                position: { xScale: 0.8, xOffset: 0, yScale: 0.46, yOffset: 0 },
+                size: { xScale: 0.12, xOffset: 0, yScale: 0, yOffset: 30 },
+                backgroundTransparency: 1,
+                textAlign: "Right",
+                zIndex: 5,
+              },
+              {
+                type: "Frame",
+                id: "ProgressTrack",
+                name: "ProgressTrack",
+                position: { xScale: 0.08, xOffset: 0, yScale: 0.62, yOffset: 0 },
+                size: { xScale: 0.84, xOffset: 0, yScale: 0, yOffset: 18 },
+                backgroundColor: { r: 15, g: 23, b: 42 },
+                cornerRadius: 9,
+                strokeColor: { r: 255, g: 255, b: 255 },
+                strokeThickness: 1,
+                clipsDescendants: true,
+                zIndex: 5,
+                children: [
+                  {
+                    type: "Frame",
+                    id: "ProgressFill",
+                    name: "ProgressFill",
+                    position: { xScale: 0, xOffset: 0, yScale: 0, yOffset: 0 },
+                    size: { xScale: 0, xOffset: 0, yScale: 1, yOffset: 0 },
+                    backgroundColor: primary,
+                    cornerRadius: 9,
+                    gradient: { from: primary, to: accent, rotation: 0 },
+                    zIndex: 6,
+                  },
+                ],
+              },
+              {
+                type: "TextLabel",
+                id: "TipLabel",
+                name: "TipLabel",
+                text: "Tip: Explore carefully and watch for hidden paths.",
+                textColor: { r: 180, g: 190, b: 208 },
+                textSize: 14,
+                textWrapped: true,
+                font: "Gotham",
+                position: { xScale: 0.08, xOffset: 0, yScale: 0.76, yOffset: 0 },
+                size: { xScale: 0.7, xOffset: 0, yScale: 0, yOffset: 42 },
+                backgroundTransparency: 1,
+                textAlign: "Left",
+                zIndex: 5,
+              },
+              {
+                type: "TextButton",
+                id: "MusicButton",
+                name: "MusicButton",
+                text: "Music: On",
+                textColor: { r: 255, g: 255, b: 255 },
+                textSize: 14,
+                font: "GothamBold",
+                position: { xScale: 0.76, xOffset: 0, yScale: 0.78, yOffset: 0 },
+                size: { xScale: 0.16, xOffset: 0, yScale: 0, yOffset: 40 },
+                backgroundColor: mixColor(accent, bg, 0.35),
+                cornerRadius: 14,
+                strokeColor: accent,
+                strokeThickness: 1.5,
+                zIndex: 5,
+              },
+            ],
+          },
+          {
+            type: "TextLabel",
+            id: "ActivityIndicator",
+            name: "ActivityIndicator",
+            text: "◆",
+            textColor: primary,
+            textSize: 30,
+            font: "GothamBlack",
+            anchorPoint: { x: 0.5, y: 0.5 },
+            position: { xScale: 0.5, xOffset: 0, yScale: 0.76, yOffset: 0 },
+            size: { xScale: 0, xOffset: 48, yScale: 0, yOffset: 48 },
+            backgroundTransparency: 1,
+            zIndex: 5,
+          },
+          {
+            type: "TextLabel",
+            id: "FooterLabel",
+            name: "FooterLabel",
+            text: "Loading assets securely - please wait",
+            textColor: { r: 148, g: 163, b: 184 },
+            textSize: 13,
+            font: "GothamBold",
+            position: { xScale: 0.15, xOffset: 0, yScale: 0.9, yOffset: 0 },
+            size: { xScale: 0.7, xOffset: 0, yScale: 0, yOffset: 26 },
+            backgroundTransparency: 1,
+            zIndex: 5,
+          },
+        ],
+      },
+      localScript: `local ContentProvider = game:GetService("ContentProvider")
+local SoundService = game:GetService("SoundService")
+local TweenService = game:GetService("TweenService")
+
+local gui = script.Parent
+local root = gui:FindFirstChild("RootFrame")
+local fill = gui:FindFirstChild("ProgressFill", true)
+local status = gui:FindFirstChild("StatusLabel", true)
+local percent = gui:FindFirstChild("PercentLabel", true)
+local tip = gui:FindFirstChild("TipLabel", true)
+local indicator = gui:FindFirstChild("ActivityIndicator", true)
+local musicButton = gui:FindFirstChild("MusicButton", true)
+local music = SoundService:FindFirstChild("LoadingMusic") or SoundService:FindFirstChild("MenuMusic")
+local tips = {
+\t"Tip: Explore carefully and watch for hidden paths.",
+\t"Tip: Check your objectives whenever you feel lost.",
+\t"Tip: Settings can be changed at any time.",
+\t"Tip: Teamwork often unlocks faster progress.",
+}
+local finished = false
+
+task.spawn(function()
+\tlocal index = 1
+\twhile not finished and tip do
+\t\ttip.Text = tips[index]
+\t\tindex = index % #tips + 1
+\t\ttask.wait(2.6)
+\tend
+end)
+
+task.spawn(function()
+\twhile not finished and indicator do
+\t\tTweenService:Create(indicator, TweenInfo.new(0.65, Enum.EasingStyle.Quad), { Rotation = indicator.Rotation + 90 }):Play()
+\t\ttask.wait(0.66)
+\tend
+end)
+
+if musicButton and musicButton:IsA("TextButton") then
+\tmusicButton.Text = music and music.Playing and "Music: On" or "Music: Off"
+\tmusicButton.MouseButton1Click:Connect(function()
+\t\tif not music then
+\t\t\tmusicButton.Text = "Music: N/A"
+\t\t\treturn
+\t\tend
+\t\tmusic.Playing = not music.Playing
+\t\tmusicButton.Text = music.Playing and "Music: On" or "Music: Off"
+\tend)
+end
+
+local assets = {}
+for _, item in ipairs(game:GetDescendants()) do
+\tif item:IsA("ImageLabel") or item:IsA("ImageButton") or item:IsA("Texture") or item:IsA("Decal") or item:IsA("MeshPart") or item:IsA("Sound") or item:IsA("Animation") then
+\t\ttable.insert(assets, item)
+\tend
+end
+
+local total = math.max(#assets, 1)
+local loaded = 0
+local function updateProgress(value, label)
+\tlocal ratio = math.clamp(value / total, 0, 1)
+\tif fill then TweenService:Create(fill, TweenInfo.new(0.18, Enum.EasingStyle.Quad), { Size = UDim2.fromScale(ratio, 1) }):Play() end
+\tif percent then percent.Text = string.format("%d%%", math.floor(ratio * 100 + 0.5)) end
+\tif status then status.Text = label end
+end
+
+if #assets > 0 then
+\tfor startIndex = 1, #assets, 20 do
+\t\tlocal batch = {}
+\t\tfor index = startIndex, math.min(startIndex + 19, #assets) do table.insert(batch, assets[index]) end
+\t\tpcall(function() ContentProvider:PreloadAsync(batch) end)
+\t\tloaded += #batch
+\t\tupdateProgress(loaded, "Loading world assets...")
+\t\ttask.wait()
+\tend
+else
+\tupdateProgress(1, "World ready")
+end
+
+finished = true
+updateProgress(total, "Ready!")
+task.wait(0.35)
+if root then
+\tfor _, item in ipairs(root:GetDescendants()) do
+\t\tif item:IsA("GuiObject") then
+\t\t\tTweenService:Create(item, TweenInfo.new(0.45, Enum.EasingStyle.Quad), {
+\t\t\t\tBackgroundTransparency = 1,
+\t\t\t}):Play()
+\t\t\tif item:IsA("TextLabel") or item:IsA("TextButton") then
+\t\t\t\tTweenService:Create(item, TweenInfo.new(0.45), { TextTransparency = 1 }):Play()
+\t\t\tend
+\t\tend
+\tend
+\ttask.wait(0.48)
+end
+gui.Enabled = false`,
+    },
+    { category: "Loading Screen", bgColor: bg },
+  );
+}
+
 function createFallbackUISpec(opts: {
   category: UICategory;
   style: UIStyle;
@@ -525,6 +880,9 @@ function createFallbackUISpec(opts: {
   const accent = opts.accentColor ?? { r: 139, g: 92, b: 246 };
   const bg = opts.bgColor ?? { r: 15, g: 23, b: 42 };
   const title = opts.title?.trim() || `${opts.category}`;
+  if (opts.category === "Loading Screen") {
+    return createLoadingScreenUISpec(opts);
+  }
   const screenGuiName = safeInstanceName(`${title}Gui`, "BloxSmithGeneratedGui");
   const buttons = buttonTextForCategory(opts.category);
   const needsRemote = /Shop|Rewards|Spin|Codes|Trading|Admin/.test(opts.category);
@@ -826,6 +1184,146 @@ function createFallbackUISpec(opts: {
             children: menuInfoCards,
           },
           {
+            type: "Frame",
+            id: "SettingsPanel",
+            name: "SettingsPanel",
+            visible: false,
+            anchorPoint: { x: 0.5, y: 0.5 },
+            position: { xScale: 0.5, xOffset: 0, yScale: 0.5, yOffset: 0 },
+            size: { xScale: 0, xOffset: 460, yScale: 0, yOffset: 300 },
+            backgroundColor: { r: 8, g: 13, b: 24 },
+            backgroundTransparency: 0.04,
+            cornerRadius: 24,
+            strokeColor: primary,
+            strokeThickness: 2,
+            padding: 24,
+            zIndex: 10,
+            children: [
+              {
+                type: "TextLabel",
+                id: "SettingsTitle",
+                name: "SettingsTitle",
+                text: "SETTINGS",
+                textColor: { r: 255, g: 255, b: 255 },
+                textSize: 28,
+                font: "GothamBlack",
+                position: { xScale: 0.05, xOffset: 0, yScale: 0.05, yOffset: 0 },
+                size: { xScale: 0.7, xOffset: 0, yScale: 0, yOffset: 42 },
+                backgroundTransparency: 1,
+                textAlign: "Left",
+                zIndex: 11,
+              },
+              {
+                type: "TextButton",
+                id: "MusicToggleButton",
+                name: "MusicToggleButton",
+                text: "Music: On",
+                textColor: { r: 255, g: 255, b: 255 },
+                textSize: 18,
+                font: "GothamBold",
+                position: { xScale: 0.05, xOffset: 0, yScale: 0.3, yOffset: 0 },
+                size: { xScale: 0.9, xOffset: 0, yScale: 0, yOffset: 58 },
+                backgroundColor: mixColor(primary, bg, 0.35),
+                cornerRadius: 16,
+                strokeColor: primary,
+                strokeThickness: 1.5,
+                zIndex: 11,
+              },
+              {
+                type: "TextButton",
+                id: "EffectsToggleButton",
+                name: "EffectsToggleButton",
+                text: "Effects: On",
+                textColor: { r: 255, g: 255, b: 255 },
+                textSize: 18,
+                font: "GothamBold",
+                position: { xScale: 0.05, xOffset: 0, yScale: 0.56, yOffset: 0 },
+                size: { xScale: 0.9, xOffset: 0, yScale: 0, yOffset: 58 },
+                backgroundColor: mixColor(accent, bg, 0.4),
+                cornerRadius: 16,
+                strokeColor: accent,
+                strokeThickness: 1.5,
+                zIndex: 11,
+              },
+              {
+                type: "TextButton",
+                id: "SettingsCloseButton",
+                name: "SettingsCloseButton",
+                text: "X",
+                textColor: { r: 255, g: 255, b: 255 },
+                textSize: 18,
+                font: "GothamBlack",
+                position: { xScale: 0.84, xOffset: 0, yScale: 0.04, yOffset: 0 },
+                size: { xScale: 0, xOffset: 44, yScale: 0, yOffset: 44 },
+                backgroundColor: { r: 51, g: 65, b: 85 },
+                cornerRadius: 14,
+                zIndex: 11,
+              },
+            ],
+          },
+          {
+            type: "Frame",
+            id: "ShopPanel",
+            name: "ShopPanel",
+            visible: false,
+            anchorPoint: { x: 0.5, y: 0.5 },
+            position: { xScale: 0.5, xOffset: 0, yScale: 0.5, yOffset: 0 },
+            size: { xScale: 0, xOffset: 520, yScale: 0, yOffset: 320 },
+            backgroundColor: { r: 8, g: 13, b: 24 },
+            backgroundTransparency: 0.04,
+            cornerRadius: 24,
+            strokeColor: accent,
+            strokeThickness: 2,
+            padding: 24,
+            zIndex: 10,
+            children: [
+              {
+                type: "TextLabel",
+                id: "ShopTitle",
+                name: "ShopTitle",
+                text: "FEATURED SHOP",
+                textColor: { r: 255, g: 255, b: 255 },
+                textSize: 28,
+                font: "GothamBlack",
+                position: { xScale: 0.05, xOffset: 0, yScale: 0.05, yOffset: 0 },
+                size: { xScale: 0.72, xOffset: 0, yScale: 0, yOffset: 42 },
+                backgroundTransparency: 1,
+                textAlign: "Left",
+                zIndex: 11,
+              },
+              {
+                type: "TextLabel",
+                id: "ShopBody",
+                name: "ShopBody",
+                text: "Connect this panel to your gamepass, product, or currency catalog.",
+                textColor: { r: 203, g: 213, b: 225 },
+                textSize: 17,
+                textWrapped: true,
+                font: "GothamBold",
+                position: { xScale: 0.05, xOffset: 0, yScale: 0.28, yOffset: 0 },
+                size: { xScale: 0.9, xOffset: 0, yScale: 0, yOffset: 76 },
+                backgroundTransparency: 1,
+                zIndex: 11,
+              },
+              {
+                type: "TextButton",
+                id: "ShopCloseButton",
+                name: "ShopCloseButton",
+                text: "Back",
+                textColor: { r: 255, g: 255, b: 255 },
+                textSize: 18,
+                font: "GothamBlack",
+                position: { xScale: 0.05, xOffset: 0, yScale: 0.7, yOffset: 0 },
+                size: { xScale: 0.9, xOffset: 0, yScale: 0, yOffset: 58 },
+                backgroundColor: accent,
+                cornerRadius: 16,
+                strokeColor: { r: 255, g: 255, b: 255 },
+                strokeThickness: 1.5,
+                zIndex: 11,
+              },
+            ],
+          },
+          {
             type: "TextLabel",
             id: "VersionLabel",
             name: "VersionLabel",
@@ -846,6 +1344,8 @@ function createFallbackUISpec(opts: {
 local gui = script.Parent
 local stack = gui:FindFirstChild("ButtonStack", true)
 local rightPanel = gui:FindFirstChild("RightInfoPanel", true)
+local settingsPanel = gui:FindFirstChild("SettingsPanel", true)
+local shopPanel = gui:FindFirstChild("ShopPanel", true)
 local playerName = gui:FindFirstChild("PlayerNameLabel", true)
 local player = game:GetService("Players").LocalPlayer
 local clickSound = gui:FindFirstChild("UIClickSound")
@@ -876,8 +1376,29 @@ local function wireButton(button)
 \tend)
 \tbutton.MouseButton1Click:Connect(function()
 \t\tif clickSound then clickSound:Play() end
-\t\tprint("[BloxSmith MainMenu] clicked", button.Name)
-\t\tif button.Name == "PlayButton" then gui.Enabled = false end
+\t\tif button.Name == "PlayButton" then
+\t\t\tgui.Enabled = false
+\t\telseif button.Name == "SettingsButton" and settingsPanel then
+\t\t\tsettingsPanel.Visible = true
+\t\telseif button.Name == "ShopButton" and shopPanel then
+\t\t\tshopPanel.Visible = true
+\t\telseif button.Name == "SettingsCloseButton" and settingsPanel then
+\t\t\tsettingsPanel.Visible = false
+\t\telseif button.Name == "ShopCloseButton" and shopPanel then
+\t\t\tshopPanel.Visible = false
+\t\telseif button.Name == "MusicToggleButton" then
+\t\t\tlocal music = game:GetService("SoundService"):FindFirstChild("MenuMusic")
+\t\t\tif music and music:IsA("Sound") then
+\t\t\t\tmusic.Playing = not music.Playing
+\t\t\t\tbutton.Text = music.Playing and "Music: On" or "Music: Off"
+\t\t\telse
+\t\t\t\tbutton.Text = "Music: N/A"
+\t\t\tend
+\t\telseif button.Name == "EffectsToggleButton" then
+\t\t\tlocal enabled = not (gui:GetAttribute("EffectsEnabled") == false)
+\t\t\tgui:SetAttribute("EffectsEnabled", not enabled)
+\t\t\tbutton.Text = enabled and "Effects: Off" or "Effects: On"
+\t\tend
 \tend)
 end
 for _, item in ipairs(gui:GetDescendants()) do wireButton(item) end
@@ -1444,7 +1965,29 @@ if panel and panel:IsA("GuiObject") then
 \t}):Play()
 end`,
     serverScript: needsRemote
-      ? `local ReplicatedStorage = game:GetService("ReplicatedStorage")\nlocal remote = ReplicatedStorage:FindFirstChild("${screenGuiName}Request") or Instance.new("RemoteEvent")\nremote.Name = "${screenGuiName}Request"\nremote.Parent = ReplicatedStorage\nremote.OnServerEvent:Connect(function(player, action)\n\tprint("BloxSmith UI request", player.Name, action)\n\t-- TODO: validate purchases/rewards on the server before granting anything.\nend)`
+      ? `local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local remote = ReplicatedStorage:FindFirstChild("${screenGuiName}Request") or Instance.new("RemoteEvent")
+remote.Name = "${screenGuiName}Request"
+remote.Parent = ReplicatedStorage
+
+local lastRequest = {}
+local allowedActions = {
+\tPrimaryCTA = true,
+\tCloseButton = true,
+}
+
+remote.OnServerEvent:Connect(function(player, action)
+\tif typeof(action) ~= "string" or #action > 60 then return end
+\tlocal now = os.clock()
+\tif now - (lastRequest[player] or 0) < 0.25 then return end
+\tlastRequest[player] = now
+\tif not allowedActions[action] and not action:match("^ActionButton%d+$") then return end
+\tplayer:SetAttribute("Last${screenGuiName}Action", action)
+end)
+
+game:GetService("Players").PlayerRemoving:Connect(function(player)
+\tlastRequest[player] = nil
+end)`
       : undefined,
   };
 
@@ -1506,6 +2049,7 @@ Produce a polished, fully populated UISpec for this Roblox UI. Include working L
 Make this layout feel specific to the request. Use a different composition/background treatment than a generic centered card whenever the prompt asks for a menu, HUD, dialogue, shop, lobby, or themed background.
 Do not create a bare mockup. Add the pieces a player expects: header/title, readable subtitle or objective, 3-6 real actions, secondary cards/rows, status/currency/reward details, close/back controls where useful, hover/press tweens, selected-state feedback, and mobile-safe sizes.
 If this is a main menu/title screen, make Play the hero CTA and include Settings, Shop, Credits/Servers, updates/news, player/reward/status card, footer/version text, and an entry animation.
+If this is a loading screen, do not generate menu navigation. Build title/logo treatment, real progress track/fill/percentage/status, rotating tips, activity animation, optional music/skip control, ContentProvider preload logic, and a coordinated fade exit.
 If this is a shop, inventory, settings panel, HUD, rewards, quest, or admin GUI, include category-specific rows/cards and script behavior instead of generic placeholder buttons.
 ${wantsMainMenuBackground(opts) ? "Main menu background requirement: create the background as ScreenGui children only. Use BackgroundLayer/BackgroundImage plus overlay behind the buttons; do not create or imply Workspace parts, 3D blocks, terrain, or camera-selected objects." : ""}`;
 
@@ -1565,7 +2109,7 @@ function color3(c?: { r: number; g: number; b: number }) {
 
 function propsForElement(el: UIElement) {
   const props: Record<string, unknown> = {};
-  props.Visible = true;
+  props.Visible = el.visible ?? true;
   if (el.size) props.Size = udim2(el.size);
   if (el.position) props.Position = udim2(el.position);
   if (el.anchorPoint)
@@ -1574,6 +2118,8 @@ function propsForElement(el: UIElement) {
   if (typeof el.backgroundTransparency === "number")
     props.BackgroundTransparency = el.backgroundTransparency;
   if (typeof el.zIndex === "number") props.ZIndex = el.zIndex;
+  if (typeof el.clipsDescendants === "boolean") props.ClipsDescendants = el.clipsDescendants;
+  if (typeof el.rotation === "number") props.Rotation = el.rotation;
 
   if (el.type === "TextLabel" || el.type === "TextButton") {
     if (el.text != null) props.Text = el.text;
@@ -1582,16 +2128,21 @@ function propsForElement(el: UIElement) {
     if (el.font) props.Font = { __t: "Enum", enum: "Font", value: el.font };
     if (el.textAlign)
       props.TextXAlignment = { __t: "Enum", enum: "TextXAlignment", value: el.textAlign };
+    if (typeof el.textWrapped === "boolean") props.TextWrapped = el.textWrapped;
+    if (typeof el.textScaled === "boolean") props.TextScaled = el.textScaled;
   }
   if (el.type === "TextButton" || el.type === "ImageButton") {
     props.Active = true;
     props.AutoButtonColor = true;
+    props.Selectable = true;
   }
   if (el.type === "ImageButton" || el.type === "ImageLabel") {
     if (el.image) {
       const img = /^\d+$/.test(el.image) ? `rbxassetid://${el.image}` : el.image;
       props.Image = img;
     }
+    if (typeof el.imageTransparency === "number") props.ImageTransparency = el.imageTransparency;
+    if (el.scaleType) props.ScaleType = { __t: "Enum", enum: "ScaleType", value: el.scaleType };
   }
   if (el.type === "ScrollingFrame") {
     props.ScrollBarThickness = 8;
@@ -1663,6 +2214,29 @@ function pushElement(el: UIElement, parentPath: string, actions: PluginAction[])
       },
     });
   }
+  if (typeof el.padding === "number" && el.padding > 0) {
+    actions.push({
+      type: "create",
+      className: "UIPadding",
+      name: "UIPadding",
+      parent: myPath,
+      properties: {
+        PaddingTop: { __t: "UDim", s: 0, o: el.padding },
+        PaddingBottom: { __t: "UDim", s: 0, o: el.padding },
+        PaddingLeft: { __t: "UDim", s: 0, o: el.padding },
+        PaddingRight: { __t: "UDim", s: 0, o: el.padding },
+      },
+    });
+  }
+  if (typeof el.aspectRatio === "number") {
+    actions.push({
+      type: "create",
+      className: "UIAspectRatioConstraint",
+      name: "UIAspectRatioConstraint",
+      parent: myPath,
+      properties: { AspectRatio: el.aspectRatio },
+    });
+  }
   if (el.layout === "List") {
     actions.push({
       type: "create",
@@ -1709,11 +2283,6 @@ if gui and gui:IsA("ScreenGui") then
 \tgui.IgnoreGuiInset = true
 \tgui.ResetOnSpawn = false
 \tgui.DisplayOrder = math.max(gui.DisplayOrder, 999999)
-end
-for _, item in ipairs(gui:GetDescendants()) do
-\tif item:IsA("GuiObject") then
-\t\titem.Visible = true
-\tend
 end
 print("[BloxSmith UI] ${screenGuiName} is enabled and visible.")
 

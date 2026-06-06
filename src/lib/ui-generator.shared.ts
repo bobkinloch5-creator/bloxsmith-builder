@@ -36,5 +36,18 @@ export const UI_CATEGORIES = [
 
 export type UICategory = (typeof UI_CATEGORIES)[number];
 
-export const UI_STYLES = ["Modern", "Neon", "Minimal", "Cartoon", "Glass", "Anime"] as const;
+export const UI_STYLES = [
+  "Modern",
+  "Neon",
+  "Minimal",
+  "Cartoon",
+  "Glass",
+  "Anime",
+  "Horror",
+  "Simulator",
+  "Fantasy",
+  "Sci-Fi",
+  "Retro",
+  "Luxury",
+] as const;
 export type UIStyle = (typeof UI_STYLES)[number];

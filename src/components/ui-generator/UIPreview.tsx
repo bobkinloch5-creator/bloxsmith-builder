@@ -16,17 +16,26 @@ export type SpecElement = {
   textSize?: number;
   font?: string;
   textAlign?: "Left" | "Center" | "Right";
+  textWrapped?: boolean;
+  textScaled?: boolean;
   image?: string;
+  imageTransparency?: number;
+  scaleType?: "Crop" | "Fit" | "Stretch" | "Slice" | "Tile";
   position?: Udim2;
   size?: Udim2;
   anchorPoint?: { x: number; y: number };
   zIndex?: number;
+  visible?: boolean;
   backgroundColor?: Color;
   backgroundTransparency?: number;
   cornerRadius?: number;
   strokeColor?: Color;
   strokeThickness?: number;
   gradient?: { from: Color; to: Color; rotation: number };
+  padding?: number;
+  clipsDescendants?: boolean;
+  rotation?: number;
+  aspectRatio?: number;
   layout?: "List" | "Grid" | "None";
   layoutDirection?: "Vertical" | "Horizontal";
   layoutPadding?: number;
@@ -47,7 +56,11 @@ function imageUrl(image?: string) {
 }
 
 function elementStyle(el: SpecElement, isRoot: boolean): CSSProperties {
-  const size = el.size ?? (isRoot ? { xScale: 1, xOffset: 0, yScale: 1, yOffset: 0 } : { xScale: 0, xOffset: 100, yScale: 0, yOffset: 40 });
+  const size =
+    el.size ??
+    (isRoot
+      ? { xScale: 1, xOffset: 0, yScale: 1, yOffset: 0 }
+      : { xScale: 0, xOffset: 100, yScale: 0, yOffset: 40 });
   const pos = el.position ?? { xScale: 0, xOffset: 0, yScale: 0, yOffset: 0 };
   const anchor = el.anchorPoint ?? { x: 0, y: 0 };
   const bgAlpha = 1 - (el.backgroundTransparency ?? (el.type === "Frame" || isRoot ? 0 : 0));
@@ -58,7 +71,7 @@ function elementStyle(el: SpecElement, isRoot: boolean): CSSProperties {
     top: `calc(${pos.yScale * 100}% + ${pos.yOffset}px)`,
     width: `calc(${size.xScale * 100}% + ${size.xOffset}px)`,
     height: `calc(${size.yScale * 100}% + ${size.yOffset}px)`,
-    transform: `translate(${-anchor.x * 100}%, ${-anchor.y * 100}%)`,
+    transform: `translate(${-anchor.x * 100}%, ${-anchor.y * 100}%) rotate(${el.rotation ?? 0}deg)`,
     boxSizing: "border-box",
     zIndex: el.zIndex ?? undefined,
     color: rgb(el.textColor ?? { r: 255, g: 255, b: 255 }),
@@ -70,7 +83,11 @@ function elementStyle(el: SpecElement, isRoot: boolean): CSSProperties {
       (el.textAlign === "Left" && "flex-start") ||
       (el.textAlign === "Right" && "flex-end") ||
       "center",
-    overflow: el.type === "ScrollingFrame" ? "auto" : "hidden",
+    overflow:
+      el.type === "ScrollingFrame" ? "auto" : el.clipsDescendants === false ? "visible" : "hidden",
+    padding: el.padding ? `${el.padding}px` : undefined,
+    aspectRatio: el.aspectRatio,
+    visibility: el.visible === false ? "hidden" : undefined,
   };
 
   if (el.backgroundColor) {
@@ -103,7 +120,7 @@ function layoutChildren(el: SpecElement): CSSProperties {
   }
   if (el.layout === "Grid") {
     const cell = el.cellSize ?? { xScale: 0, xOffset: 120, yScale: 0, yOffset: 120 };
-    const cellW = (cell.xScale * 100) + (cell.xOffset || 0);
+    const cellW = cell.xScale * 100 + (cell.xOffset || 0);
     return {
       display: "grid",
       gridTemplateColumns: `repeat(auto-fill, minmax(${Math.max(60, cell.xOffset || cellW)}px, 1fr))`,
@@ -134,7 +151,14 @@ function renderElement(el: SpecElement, isRoot = false, depth = 0) {
           src={img}
           alt=""
           loading="lazy"
-          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            objectFit: el.scaleType === "Fit" ? "contain" : "cover",
+            opacity: 1 - (el.imageTransparency ?? 0),
+          }}
         />
       )}
       {el.text && (
@@ -147,7 +171,7 @@ function renderElement(el: SpecElement, isRoot = false, depth = 0) {
             fontWeight: el.type === "TextButton" ? 600 : 500,
             fontFamily: "system-ui, -apple-system, 'Segoe UI', sans-serif",
             textShadow: el.gradient ? "0 1px 2px rgba(0,0,0,0.3)" : undefined,
-            whiteSpace: "nowrap",
+            whiteSpace: el.textWrapped ? "normal" : "nowrap",
             overflow: "hidden",
             textOverflow: "ellipsis",
           }}
@@ -157,25 +181,32 @@ function renderElement(el: SpecElement, isRoot = false, depth = 0) {
       )}
       {el.children?.length ? (
         <div style={{ ...childWrapperStyle, pointerEvents: "auto" }}>
-          {isLayoutContainer ? (
-            el.children.map((c) => (
-              <div
-                key={c.id ?? c.name}
-                style={{
-                  position: "relative",
-                  width: el.layout === "List" && el.layoutDirection !== "Horizontal" ? "100%" : "auto",
-                  minHeight: el.cellSize?.yOffset ?? 40,
-                  minWidth: el.cellSize?.xOffset ?? undefined,
-                }}
-              >
-                <div style={{ position: "relative", width: "100%", height: "100%" }}>
-                  {renderElement({ ...c, position: undefined, size: { xScale: 1, xOffset: 0, yScale: 1, yOffset: 0 } } as SpecElement, false, depth + 1)}
+          {isLayoutContainer
+            ? el.children.map((c) => (
+                <div
+                  key={c.id ?? c.name}
+                  style={{
+                    position: "relative",
+                    width:
+                      el.layout === "List" && el.layoutDirection !== "Horizontal" ? "100%" : "auto",
+                    minHeight: el.cellSize?.yOffset ?? 40,
+                    minWidth: el.cellSize?.xOffset ?? undefined,
+                  }}
+                >
+                  <div style={{ position: "relative", width: "100%", height: "100%" }}>
+                    {renderElement(
+                      {
+                        ...c,
+                        position: undefined,
+                        size: { xScale: 1, xOffset: 0, yScale: 1, yOffset: 0 },
+                      } as SpecElement,
+                      false,
+                      depth + 1,
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))
-          ) : (
-            el.children.map((c) => renderElement(c, false, depth + 1))
-          )}
+              ))
+            : el.children.map((c) => renderElement(c, false, depth + 1))}
         </div>
       ) : null}
     </div>

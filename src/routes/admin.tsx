@@ -2,14 +2,26 @@ import { createFileRoute, useNavigate, redirect } from "@tanstack/react-router";
 import { Header, Footer } from "@/components/layout";
 import { useAuth } from "@/lib/auth-context";
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { requireAdmin, adminAdjustCreditsFn } from "@/lib/admin.functions";
+import {
+  requireAdmin,
+  adminAdjustCreditsFn,
+  adminCreatePromoFn,
+  adminDeletePromoFn,
+  adminResetAiUsageFn,
+  adminReviewPaymentFn,
+  adminReviewPromotionFn,
+  adminSetBanFn,
+  adminSetCreditBalanceFn,
+  adminSetRoleFn,
+  adminUpdatePromoFn,
+  loadAdminDashboardFn,
+} from "@/lib/admin.functions";
 import { useServerFn } from "@tanstack/react-start";
 import { CheckCircle2, XCircle, Loader2, PlayCircle, RefreshCw } from "lucide-react";
 import { testAllSiteModels, type ModelTestResult } from "@/lib/model-test.functions";
 import { RobloxDocsPanel } from "@/components/RobloxDocsPanel";
-import { loadModeratorDashboard, resendConfirmationForUser } from "@/lib/moderator.functions";
+import { resendConfirmationForUser } from "@/lib/moderator.functions";
 
 export const Route = createFileRoute("/admin")({
   beforeLoad: async () => {
@@ -103,6 +115,9 @@ function Admin() {
     users: number;
     projects: number;
     generations: number;
+    banned: number;
+    pendingPayments: number;
+    pendingPromotions: number;
   } | null>(null);
   const [requests, setRequests] = useState<PR[]>([]);
   const [emails, setEmails] = useState<Record<string, string>>({});
@@ -122,108 +137,75 @@ function Admin() {
   const [showBanned, setShowBanned] = useState(false);
   const [moderatorActions, setModeratorActions] = useState<ModeratorAction[]>([]);
   const [emailConfirmed, setEmailConfirmed] = useState<Record<string, boolean>>({});
-  const loadModeration = useServerFn(loadModeratorDashboard);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [busyUserId, setBusyUserId] = useState<string | null>(null);
   const resendConfirm = useServerFn(resendConfirmationForUser);
   const adjustCreditsServer = useServerFn(adminAdjustCreditsFn);
+  const loadAdminDashboard = useServerFn(loadAdminDashboardFn);
+  const setBanServer = useServerFn(adminSetBanFn);
+  const setRoleServer = useServerFn(adminSetRoleFn);
+  const setCreditBalanceServer = useServerFn(adminSetCreditBalanceFn);
+  const resetAiUsageServer = useServerFn(adminResetAiUsageFn);
+  const createPromoServer = useServerFn(adminCreatePromoFn);
+  const updatePromoServer = useServerFn(adminUpdatePromoFn);
+  const deletePromoServer = useServerFn(adminDeletePromoFn);
+  const reviewPaymentServer = useServerFn(adminReviewPaymentFn);
+  const reviewPromotionServer = useServerFn(adminReviewPromotionFn);
 
   const loadUsers = async () => {
-    const { data: profs } = await supabase
-      .from("profiles")
-      .select("id,display_name,credits,banned,ban_reason")
-      .order("created_at", { ascending: false })
-      .limit(200);
-    const list = (profs ?? []) as Array<{
-      id: string;
-      display_name: string | null;
-      credits: number;
-      banned: boolean;
-      ban_reason: string | null;
-    }>;
-    const ids = list.map((p) => p.id);
-    if (ids.length === 0) {
-      setRows([]);
-      return;
-    }
-    const [{ data: roles }, { data: projs }, { data: gens }] = await Promise.all([
-      supabase.from("user_roles").select("user_id,role").in("user_id", ids),
-      supabase.from("projects").select("user_id").in("user_id", ids),
-      supabase.from("generations").select("user_id").in("user_id", ids),
-    ]);
-    const roleMap: Record<string, string[]> = {};
-    (roles ?? []).forEach((r: { user_id: string; role: string }) => {
-      (roleMap[r.user_id] ||= []).push(r.role);
-    });
-    const pCount: Record<string, number> = {};
-    (projs ?? []).forEach((p: { user_id: string }) => {
-      pCount[p.user_id] = (pCount[p.user_id] ?? 0) + 1;
-    });
-    const gCount: Record<string, number> = {};
-    (gens ?? []).forEach((g: { user_id: string }) => {
-      gCount[g.user_id] = (gCount[g.user_id] ?? 0) + 1;
-    });
-    setRows(
-      list.map((p) => ({
-        ...p,
-        email: emails[p.id] ?? "",
-        roles: roleMap[p.id] ?? ["user"],
-        projects: pCount[p.id] ?? 0,
-        generations: gCount[p.id] ?? 0,
-      })),
-    );
     try {
-      const modData = await loadModeration();
+      setRefreshing(true);
+      setLoadError(null);
+      const data = await loadAdminDashboard();
+      const users = (data.users ?? []) as Array<
+        Row & { email_confirmed: boolean; created_at: string }
+      >;
+      setRows(users);
+      setStats(data.stats);
+      setRequests((data.paymentRequests ?? []) as PR[]);
+      setPromos((data.promos ?? []) as Promo[]);
+      setPromoSubs((data.promotionSubmissions ?? []) as PromoSub[]);
+      setActivity((data.creditActivity ?? []) as Activity[]);
+      setModeratorActions((data.moderatorActions ?? []) as ModeratorAction[]);
       const confirmedMap: Record<string, boolean> = {};
-      const emailMap: Record<string, string> = { ...emails };
-      (modData.users ?? []).forEach(
-        (u: { id: string; email: string; email_confirmed: boolean }) => {
-          confirmedMap[u.id] = u.email_confirmed;
-          if (u.email) emailMap[u.id] = u.email;
-        },
-      );
+      const emailMap: Record<string, string> = {};
+      users.forEach((adminUser) => {
+        confirmedMap[adminUser.id] = adminUser.email_confirmed;
+        if (adminUser.email) emailMap[adminUser.id] = adminUser.email;
+      });
       setEmailConfirmed(confirmedMap);
       setEmails(emailMap);
-      setRows((prev) => prev.map((r) => ({ ...r, email: emailMap[r.id] ?? r.email })));
-      setModeratorActions((modData.moderatorActions ?? []) as ModeratorAction[]);
-    } catch {
-      setEmailConfirmed({});
-      setModeratorActions([]);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Could not load the admin dashboard.";
+      setLoadError(message);
+      toast.error(message);
+    } finally {
+      setRefreshing(false);
     }
   };
 
   const loadActivity = async () => {
-    const { data } = await supabase
-      .from("credit_transactions")
-      .select("id,user_id,amount,tx_type,description,created_at")
-      .order("created_at", { ascending: false })
-      .limit(25);
-    const list = (data ?? []) as Activity[];
-    setActivity(list);
-    // Emails are sourced from auth.users via loadModeratorDashboard; no profile lookup needed.
-    void list;
+    await loadUsers();
   };
 
   const toggleBan = async (r: Row) => {
-    if (r.banned) {
-      if (!confirm(`Unban ${r.email}?`)) return;
-      const { error } = await supabase.rpc("admin_set_ban", {
-        _user_id: r.id,
-        _banned: false,
-        _reason: "",
-      });
-      if (error) return toast.error(error.message);
-      toast.success("Unbanned");
-    } else {
-      const reason = window.prompt(`Ban ${r.email}? Enter reason:`, "Violated terms");
-      if (!reason) return;
-      const { error } = await supabase.rpc("admin_set_ban", {
-        _user_id: r.id,
-        _banned: true,
-        _reason: reason,
-      });
-      if (error) return toast.error(error.message);
-      toast.success("User banned");
+    const reason = r.banned
+      ? ""
+      : window.prompt(`Ban ${r.email || r.display_name}? Enter reason:`, "Violated terms");
+    if (!r.banned && !reason) return;
+    if (r.banned && !confirm(`Unban ${r.email || r.display_name}?`)) return;
+    try {
+      setBusyUserId(r.id);
+      await setBanServer({ data: { userId: r.id, banned: !r.banned, reason: reason || "" } });
+      toast.success(r.banned ? "User unbanned" : "User banned");
+      await loadUsers();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not update ban.");
+    } finally {
+      setBusyUserId(null);
     }
-    loadUsers();
   };
 
   const toggleAdmin = async (r: Row) => {
@@ -233,14 +215,16 @@ function Admin() {
     }
     const isAdminRow = r.roles.includes("admin");
     if (!confirm(`${isAdminRow ? "Remove admin from" : "Make admin"} ${r.email}?`)) return;
-    const { error } = await supabase.rpc("admin_set_role", {
-      _user_id: r.id,
-      _role: "admin",
-      _grant: !isAdminRow,
-    });
-    if (error) return toast.error(error.message);
-    toast.success(isAdminRow ? "Admin removed" : "Admin granted");
-    loadUsers();
+    try {
+      setBusyUserId(r.id);
+      await setRoleServer({ data: { userId: r.id, role: "admin", grant: !isAdminRow } });
+      toast.success(isAdminRow ? "Admin removed" : "Admin granted");
+      await loadUsers();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not update role.");
+    } finally {
+      setBusyUserId(null);
+    }
   };
 
   const toggleModerator = async (r: Row) => {
@@ -251,14 +235,18 @@ function Admin() {
     const isModeratorRow = r.roles.includes("moderator");
     if (!confirm(`${isModeratorRow ? "Remove moderator from" : "Make moderator"} ${r.email}?`))
       return;
-    const { error } = await supabase.rpc("admin_set_role", {
-      _user_id: r.id,
-      _role: "moderator",
-      _grant: !isModeratorRow,
-    });
-    if (error) return toast.error(error.message);
-    toast.success(isModeratorRow ? "Moderator removed" : "Moderator granted");
-    loadUsers();
+    try {
+      setBusyUserId(r.id);
+      await setRoleServer({
+        data: { userId: r.id, role: "moderator", grant: !isModeratorRow },
+      });
+      toast.success(isModeratorRow ? "Moderator removed" : "Moderator granted");
+      await loadUsers();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not update role.");
+    } finally {
+      setBusyUserId(null);
+    }
   };
 
   const resetCredits = async (r: Row) => {
@@ -266,20 +254,13 @@ function Admin() {
       toast.error("Only the owner can reset credits.");
       return;
     }
+    if (r.credits === 0) return toast.message("This user already has 0 credits.");
     if (!confirm(`Reset credits to 0 for ${r.email}? (current: ${r.credits})`)) return;
-    await adjustCredits(r.id, -r.credits, "admin reset to 0");
+    await setExactCredits(r, 0, "admin reset to 0");
   };
 
   const loadPromoSubs = async () => {
-    const { data } = await supabase
-      .from("promotion_submissions")
-      .select("id,user_id,platform,url,note,status,created_at")
-      .eq("status", "pending")
-      .order("created_at", { ascending: false });
-    const list = (data ?? []) as PromoSub[];
-    setPromoSubs(list);
-    // Emails are sourced from auth.users via loadModeratorDashboard; no profile lookup needed.
-    void list;
+    await loadUsers();
   };
 
   const reviewPromo = async (s: PromoSub, approve: boolean) => {
@@ -290,43 +271,39 @@ function Admin() {
       );
       if (!raw) return;
       const amt = parseInt(raw, 10);
-      if (!Number.isFinite(amt) || amt <= 0) return toast.error("Invalid amount");
-      const { error } = await supabase.rpc("admin_approve_promotion", {
-        _submission_id: s.id,
-        _credits: amt,
-      });
-      if (error) return toast.error(error.message);
-      toast.success(`Awarded ${amt} credits`);
+      if (!Number.isFinite(amt) || amt <= 0 || amt > 500) {
+        return toast.error("Credits must be between 1 and 500.");
+      }
+      try {
+        await reviewPromotionServer({
+          data: {
+            submissionId: s.id,
+            approve: true,
+            credits: amt,
+            reason: "Approved by owner",
+          },
+        });
+        toast.success(`Awarded ${amt} credits`);
+      } catch (error) {
+        return toast.error(error instanceof Error ? error.message : "Approval failed.");
+      }
     } else {
       const reason = window.prompt("Reason?", "Does not meet promo guidelines");
       if (!reason) return;
-      const { error } = await supabase.rpc("admin_reject_promotion", {
-        _submission_id: s.id,
-        _reason: reason,
-      });
-      if (error) return toast.error(error.message);
-      toast.success("Rejected");
+      try {
+        await reviewPromotionServer({
+          data: { submissionId: s.id, approve: false, credits: null, reason },
+        });
+        toast.success("Rejected");
+      } catch (error) {
+        return toast.error(error instanceof Error ? error.message : "Rejection failed.");
+      }
     }
     loadPromoSubs();
   };
 
   const loadPromos = async () => {
-    const { data } = await supabase
-      .from("promo_codes")
-      .select("*")
-      .order("created_at", { ascending: false });
-    setPromos((data ?? []) as unknown as Promo[]);
-  };
-
-  const loadRequests = async () => {
-    const { data } = await supabase
-      .from("payment_requests")
-      .select("*")
-      .eq("status", "pending")
-      .order("created_at", { ascending: false });
-    const list = (data ?? []) as unknown as PR[];
-    setRequests(list);
-    void list;
+    await loadUsers();
   };
 
   useEffect(() => {
@@ -338,17 +315,7 @@ function Admin() {
   useEffect(() => {
     if (!isAdmin) return;
     loadUsers();
-    Promise.all([
-      supabase.from("profiles").select("id", { count: "exact", head: true }),
-      supabase.from("projects").select("id", { count: "exact", head: true }),
-      supabase.from("generations").select("id", { count: "exact", head: true }),
-    ]).then(([u, p, g]) =>
-      setStats({ users: u.count ?? 0, projects: p.count ?? 0, generations: g.count ?? 0 }),
-    );
-    loadRequests();
-    loadPromos();
-    loadPromoSubs();
-    loadActivity();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin]);
 
   const createPromo = async () => {
@@ -362,6 +329,10 @@ function Admin() {
       (!Number.isFinite(newDiscountPercent) || newDiscountPercent <= 0 || newDiscountPercent > 95)
     ) {
       return toast.error("Percent must be between 1% and 95%.");
+    }
+    const parsedMax = newMax ? Number.parseInt(newMax, 10) : null;
+    if (parsedMax != null && (!Number.isFinite(parsedMax) || parsedMax <= 0)) {
+      return toast.error("Max uses must be a positive whole number.");
     }
     const payload: {
       code: string;
@@ -383,13 +354,27 @@ function Admin() {
           : null,
       minimum_amount: Math.max(0, Number(newMinimumAmount) || 0),
       applies_to: newAppliesTo.trim() || "all",
-      max_redemptions: newMax ? parseInt(newMax, 10) : null,
+      max_redemptions: parsedMax,
       expires_at: newExpires ? new Date(newExpires).toISOString() : null,
       created_by: user?.id,
     };
-    const { error } = await (supabase as any).from("promo_codes").insert(payload);
-    if (error) return toast.error(error.message);
-    toast.success(`Promo ${code} created`);
+    try {
+      await createPromoServer({
+        data: {
+          code: payload.code,
+          promoType: payload.promo_type,
+          credits: payload.credits,
+          discountPercent: payload.discount_percent,
+          minimumAmount: payload.minimum_amount,
+          appliesTo: payload.applies_to,
+          maxRedemptions: payload.max_redemptions,
+          expiresAt: payload.expires_at,
+        },
+      });
+      toast.success(`Promo ${code} created`);
+    } catch (error) {
+      return toast.error(error instanceof Error ? error.message : "Could not create promo.");
+    }
     setNewCode("");
     setNewPromoType("credits");
     setNewCredits(50);
@@ -402,33 +387,39 @@ function Admin() {
   };
 
   const togglePromo = async (p: Promo) => {
-    const { error } = await supabase
-      .from("promo_codes")
-      .update({ active: !p.active })
-      .eq("id", p.id);
-    if (error) return toast.error(error.message);
-    loadPromos();
+    try {
+      await updatePromoServer({ data: { promoId: p.id, active: !p.active } });
+      await loadPromos();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not update promo.");
+    }
   };
 
   const deletePromo = async (p: Promo) => {
     if (!confirm(`Delete promo ${p.code}?`)) return;
-    const { error } = await supabase.from("promo_codes").delete().eq("id", p.id);
-    if (error) return toast.error(error.message);
-    loadPromos();
+    try {
+      await deletePromoServer({ data: { promoId: p.id } });
+      await loadPromos();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not delete promo.");
+    }
   };
 
   const reviewPayment = async (pr: PR, approve: boolean) => {
     if (!user) return;
-    const { error } = approve
-      ? await supabase.rpc("admin_approve_payment", { _request_id: pr.id })
-      : await supabase.rpc("admin_reject_payment", {
-          _request_id: pr.id,
-          _reason: "rejected by admin",
-        });
-    if (error) return toast.error(error.message);
-    toast.success(approve ? `Approved — +${pr.credits} credits` : "Rejected");
-    setRequests((arr) => arr.filter((r) => r.id !== pr.id));
-    loadUsers();
+    const reason = approve
+      ? "Approved by owner"
+      : window.prompt("Reason for rejecting this payment?", "Payment could not be verified");
+    if (!approve && !reason) return;
+    try {
+      await reviewPaymentServer({
+        data: { requestId: pr.id, approve, reason: reason || "" },
+      });
+      toast.success(approve ? `Approved — +${pr.credits} credits` : "Rejected");
+      await loadUsers();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not review payment.");
+    }
   };
 
   const adjustCredits = async (id: string, delta: number, reason = "admin adjust") => {
@@ -439,14 +430,18 @@ function Admin() {
     // Routes through the service-role server function so it works regardless of
     // the admin_adjust_credits SQL RPC (which 409s on the drifted ledger schema).
     try {
+      setBusyUserId(id);
       const res = (await adjustCreditsServer({
         data: { userId: id, amount: delta, reason },
       })) as { ok: true; credits: number } | { ok: false; error: string };
       if (!res.ok) return toast.error(res.error);
       setRows((p) => p.map((x) => (x.id === id ? { ...x, credits: res.credits } : x)));
       toast.success(`${delta >= 0 ? "Gifted" : "Removed"} ${Math.abs(delta)} credits`);
+      await loadUsers();
     } catch (e: any) {
       toast.error(e?.message ?? "Could not adjust credits.");
+    } finally {
+      setBusyUserId(null);
     }
   };
 
@@ -467,6 +462,61 @@ function Admin() {
     await adjustCredits(row.id, amt, reason);
   };
 
+  const setExactCredits = async (row: Row, preset?: number, presetReason?: string) => {
+    if (!isOwner) {
+      toast.error("Only the owner can set credit balances.");
+      return;
+    }
+    const raw =
+      preset == null
+        ? window.prompt(
+            `Set the exact credit balance for ${row.email || row.display_name}\nCurrent: ${row.credits}`,
+            String(row.credits),
+          )
+        : String(preset);
+    if (raw == null) return;
+    const balance = Number.parseInt(raw, 10);
+    if (!Number.isFinite(balance) || balance < 0) {
+      return toast.error("Enter a whole-number balance of 0 or more.");
+    }
+    const reason =
+      presetReason ||
+      window.prompt("Reason for the audit log", "manual balance correction") ||
+      "manual balance correction";
+    try {
+      setBusyUserId(row.id);
+      const result = await setCreditBalanceServer({
+        data: { userId: row.id, balance, reason },
+      });
+      setRows((current) =>
+        current.map((item) => (item.id === row.id ? { ...item, credits: result.credits } : item)),
+      );
+      toast.success(`Credit balance set to ${result.credits}.`);
+      await loadUsers();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not set credit balance.");
+    } finally {
+      setBusyUserId(null);
+    }
+  };
+
+  const resetAiUsage = async (row: Row) => {
+    if (!confirm(`Reset AI usage timers for ${row.email || row.display_name}?`)) return;
+    const reason =
+      window.prompt("Reason for the audit log", "support reset of AI usage limit") ||
+      "support reset of AI usage limit";
+    try {
+      setBusyUserId(row.id);
+      const result = await resetAiUsageServer({ data: { userId: row.id, reason } });
+      toast.success(`AI usage reset (${result.deleted} event${result.deleted === 1 ? "" : "s"}).`);
+      await loadUsers();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not reset AI usage.");
+    } finally {
+      setBusyUserId(null);
+    }
+  };
+
   const resendSignupEmail = async (row: Row) => {
     const email = (row.email || "").trim();
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -476,7 +526,7 @@ function Admin() {
     try {
       const res = await resendConfirm({ data: { userId: row.id, email } });
       toast.success(res.sent ? "Confirmation email resent." : "Email already confirmed.");
-      setEmailConfirmed((prev) => ({ ...prev, [row.id]: true }));
+      if (!res.sent) setEmailConfirmed((prev) => ({ ...prev, [row.id]: true }));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not resend email.");
     }
@@ -496,20 +546,52 @@ function Admin() {
     <div className="min-h-screen flex flex-col">
       <Header />
       <main className="flex-1 mx-auto w-full max-w-6xl px-4 sm:px-6 py-10 space-y-8">
-        <h1 className="text-3xl font-bold">Admin</h1>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-3xl font-bold">Admin</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Secure account operations, payments, promotions, AI diagnostics, and audit history.
+            </p>
+          </div>
+          <button
+            onClick={loadUsers}
+            disabled={refreshing}
+            className="inline-flex items-center gap-2 rounded-lg border border-border bg-surface-elevated px-3 py-2 text-sm font-semibold disabled:opacity-50"
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+            {refreshing ? "Refreshing..." : "Refresh dashboard"}
+          </button>
+        </div>
+
+        {loadError && (
+          <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            <div className="font-semibold">Dashboard load failed</div>
+            <div className="mt-1">{loadError}</div>
+          </div>
+        )}
 
         {stats && (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
             {[
               ["Users", stats.users],
               ["Projects", stats.projects],
               ["Generations", stats.generations],
+              ["Banned", stats.banned],
+              ["Payments", stats.pendingPayments],
+              ["Promotions", stats.pendingPromotions],
             ].map(([l, v]) => (
               <div key={l as string} className="glass rounded-2xl p-5">
                 <div className="text-xs uppercase text-muted-foreground">{l}</div>
                 <div className="mt-2 text-3xl font-bold">{v}</div>
               </div>
             ))}
+          </div>
+        )}
+
+        {refreshing && !stats && (
+          <div className="glass grid place-items-center rounded-2xl py-16">
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            <p className="mt-3 text-sm text-muted-foreground">Loading secure admin data...</p>
           </div>
         )}
 
@@ -683,7 +765,7 @@ function Admin() {
               <input
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder="Search…"
+                placeholder="Search email or name..."
                 className="rounded-lg bg-surface-elevated border border-border px-3 py-1.5 text-sm"
               />
             </div>
@@ -701,6 +783,16 @@ function Admin() {
                 </tr>
               </thead>
               <tbody>
+                {filtered.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={6}
+                      className="border-t border-border py-10 text-center text-sm text-muted-foreground"
+                    >
+                      No users match the current filters.
+                    </td>
+                  </tr>
+                )}
                 {filtered.map((r) => {
                   const isOwnerRow = r.roles.includes("owner");
                   const isAdminRow = r.roles.includes("admin");
@@ -717,6 +809,16 @@ function Admin() {
                             <div className="text-xs text-muted-foreground">
                               {r.display_name ?? "—"}
                             </div>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                await navigator.clipboard.writeText(r.id);
+                                toast.success("User ID copied.");
+                              }}
+                              className="text-[10px] text-muted-foreground underline"
+                            >
+                              Copy ID
+                            </button>
                           </div>
                           {r.banned && (
                             <span
@@ -752,6 +854,7 @@ function Admin() {
                         {emailConfirmed[r.id] === false && (
                           <button
                             onClick={() => resendSignupEmail(r)}
+                            disabled={busyUserId === r.id}
                             className="text-xs rounded-md border border-amber-400/40 bg-amber-400/10 text-amber-200 px-2 py-1 mr-1"
                           >
                             Resend email
@@ -761,18 +864,21 @@ function Admin() {
                           <>
                             <button
                               onClick={() => giftCustom(r)}
+                              disabled={busyUserId === r.id || isOwnerRow}
                               className="text-xs rounded-md bg-primary px-2 py-1 mr-1 font-semibold text-primary-foreground"
                             >
                               Gift
                             </button>
                             <button
                               onClick={() => adjustCredits(r.id, 100, "quick +100")}
+                              disabled={busyUserId === r.id || isOwnerRow}
                               className="text-xs rounded-md bg-primary/20 px-2 py-1 mr-1"
                             >
                               +100
                             </button>
                             <button
                               onClick={() => adjustCredits(r.id, -100, "quick -100")}
+                              disabled={busyUserId === r.id || isOwnerRow}
                               className="text-xs rounded-md border border-border px-2 py-1 mr-1"
                             >
                               -100
@@ -780,15 +886,32 @@ function Admin() {
                             <button
                               onClick={() => resetCredits(r)}
                               className="text-xs rounded-md border border-border px-2 py-1 mr-1"
-                              disabled={isOwnerRow}
+                              disabled={busyUserId === r.id || isOwnerRow}
                             >
                               Reset
                             </button>
+                            <button
+                              onClick={() => setExactCredits(r)}
+                              disabled={busyUserId === r.id || isOwnerRow}
+                              className="text-xs rounded-md border border-border px-2 py-1 mr-1"
+                            >
+                              Set balance
+                            </button>
                           </>
+                        )}
+                        {!isOwnerRow && (
+                          <button
+                            onClick={() => resetAiUsage(r)}
+                            disabled={busyUserId === r.id}
+                            className="text-xs rounded-md border border-violet-400/40 bg-violet-500/10 text-violet-200 px-2 py-1 mr-1"
+                          >
+                            Reset AI limit
+                          </button>
                         )}
                         {isOwner && !isOwnerRow && (
                           <button
                             onClick={() => toggleAdmin(r)}
+                            disabled={busyUserId === r.id}
                             className="text-xs rounded-md border border-border px-2 py-1 mr-1"
                           >
                             {isAdminRow ? "Demote" : "Make admin"}
@@ -797,6 +920,7 @@ function Admin() {
                         {isOwner && !isOwnerRow && !isAdminRow && (
                           <button
                             onClick={() => toggleModerator(r)}
+                            disabled={busyUserId === r.id}
                             className="text-xs rounded-md border border-sky-400/40 bg-sky-500/10 text-sky-200 px-2 py-1 mr-1"
                           >
                             {isModeratorRow ? "Remove mod" : "Make mod"}
@@ -805,6 +929,7 @@ function Admin() {
                         {!isOwnerRow && (
                           <button
                             onClick={() => toggleBan(r)}
+                            disabled={busyUserId === r.id}
                             className={`text-xs rounded-md px-2 py-1 ${r.banned ? "bg-success/20 text-success" : "bg-destructive/20 text-destructive"}`}
                           >
                             {r.banned ? "Unban" : "Ban"}
@@ -836,7 +961,7 @@ function Admin() {
                     <th className="py-2">When</th>
                     <th>User</th>
                     <th>Δ</th>
-                    <th>Balance</th>
+                    <th>Type</th>
                     <th>Reason</th>
                   </tr>
                 </thead>

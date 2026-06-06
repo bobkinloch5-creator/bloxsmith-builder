@@ -2,6 +2,46 @@
 
 ## Latest Updates
 
+### Reliable Autopilot Builds, Atomic Studio Delivery & Fair Refunds
+
+- Hardened Autopilot's two-pass generation so the backbone must contain Phases 1-3 and the frontend/world pass must contain Phases 4-6. Malformed, truncated, or missing phase output now gets one bounded retry instead of being silently accepted as complete.
+- Stopped the server backbone pass from wasting model steps on visual asset searches, and exposed the efficient Toolbox asset-planning tool to the frontend/world pass for varied, verified maps, props, audio, NPCs, tools, and decorations.
+- Normalized phase shapes and dependency order before validation, including safe empty-array defaults for malformed model fields.
+- Added a critical-phase safety gate: if Studio validation fully blocks a structure, shared-module, or server-system phase, Autopilot stops and refunds the run instead of queueing a broken game.
+- Added deterministic queue sequencing and exact duplicate removal. File-backed scripts now replace duplicate script actions, phase actions remain ordered, and every queued action carries an Autopilot run ID and sequence number.
+- Made Studio delivery atomic in practice: actions are inserted with a hidden staging status, project files and the generation record are committed, and only then is the complete batch published to the plugin. Failed batches are removed, changed project files are restored, and credits are refunded.
+- Added fair partial-build handling. If the optional client/UI/world pass still cannot complete after retrying, the valid server backbone is kept, the result is clearly marked partial, and half the charged credits are refunded automatically.
+- Added a final `playtest_ready` action to every successful Autopilot queue so Studio focuses the build and shows a checklist for gameplay, UI, saving, remotes, assets, and errors.
+- Updated the Autopilot UI with accurate base-price/model-multiplier messaging, rollback/refund behavior, partial-build warnings, refunded-credit counts, ordered-batch status, and run metadata.
+- Added an AI reliability evaluation that guards complete phase validation, Toolbox planning, staged publishing, sequencing, rollback, partial refunds, and playtest readiness.
+
+### Secure Admin Operations & Recovery Tools
+
+- Rebuilt the admin dashboard around server-authoritative functions using the service-role client, so user, credit, role, payment, promotion, promo-code, and usage-limit operations no longer depend on browser-side database access or permissive Row-Level Security.
+- Added protected account controls for banning and unbanning users, changing staff roles, setting an exact credit balance, granting or removing credits, and resetting a user's AI rate-limit history.
+- Protected owner accounts and admin targets from unauthorized staff changes. Role management and sensitive credit operations now require owner access, while permitted moderator actions remain available through the same dashboard.
+- Added durable audit entries for credit changes, bans, role updates, AI usage resets, payment reviews, promotion reviews, and promo-code changes.
+- Hardened credit ledger writes for both current and legacy database schemas, including clamped balances and accurate grant/spend transaction types.
+- Consolidated dashboard loading into one secure request covering users, roles, projects, generations, pending payments, promotion submissions, promo codes, credit activity, and moderator actions.
+- Added six dashboard health cards, visible loading and error states, manual refresh, action-level busy states, filtered empty states, copyable user IDs, and clearer activity labels.
+- Fixed email-confirmation handling so resending a confirmation email no longer incorrectly marks an account as confirmed before the user completes verification.
+- Hardened payment and promotion review actions with validated amounts, status checks, atomic credit grants, reviewer metadata, and audit records.
+
+### Universal UI Intelligence, Premium Menus & Screenshot Reconstruction
+
+- Expanded BloxSmith's Roblox UI design intelligence so requests for GUIs, HUDs, shops, inventories, settings, gamepasses, quests, simulator interfaces, horror/backrooms overlays, roleplay phones, tycoon build bars, obby checkpoint HUDs, racing instruments, dialogue, and custom game interfaces are classified by purpose and genre before generation.
+- Added a stronger UI design system contract covering composition, palette roles, typography hierarchy, spacing, corners/strokes, icons, depth, motion, responsive states, touch controls, mouse input, and gamepad-selectable buttons instead of reusing one generic centered panel.
+- Expanded UI Generator styles with Horror, Simulator, Fantasy, Sci-Fi, Retro, and Luxury themes alongside Modern, Neon, Minimal, Cartoon, Glass, and Anime.
+- Extended generated UI specs with responsive padding, visibility states, clipping, rotation, aspect-ratio constraints, wrapped/scaled text, image transparency, image scaling modes, and selectable controls. The website preview now renders these properties too.
+- Rebuilt the deterministic main-menu fallback with a premium full-screen layout, themed background layers, dominant Play flow, player/update/reward cards, functional Settings and Shop panels, music/effects controls, button feedback, entry animations, and mobile/gamepad-ready interaction.
+- Added a dedicated loading-screen generator instead of routing loading screens through the main-menu template. Generated loading screens now include branded title treatment, real `ContentProvider` asset progress, progress fill and percentage, status updates, rotating tips, an animated activity indicator, optional music control, and a coordinated fade exit.
+- Fixed the generated UI visibility guard so it no longer forces intentionally hidden modal panels visible when the game starts.
+- Replaced generic placeholder server handlers in deterministic interactive UI with type checks, cooldown/rate limiting, an allowed-action guard, and a real player attribute update.
+- Upgraded Screenshot to Game into a structured reconstruction workflow that analyzes camera/FOV, player scale, foreground/midground/background composition, map routes and boundaries, landmarks, materials, palette, lighting and post effects, UI anchors and proportions, props, NPCs/enemies, and the implied gameplay loop before building.
+- Screenshot-to-game builds now preserve distinctive map and HUD composition instead of substituting a generic template, recreate visible UI responsively, wire controls to real behavior, and clearly identify only the hidden details that had to be inferred.
+- Added multi-image build support: the project builder now accepts and forwards up to four reference screenshots through both the primary vision model and fallback model, using extra views to resolve hidden sides, alternate states, or layout details. Single-image callers remain supported.
+- Added new AI reliability evaluation cases for premium backrooms menus, real loading progress, and screenshot-driven simulator reconstruction.
+
 ### Smarter Creation — Vetted Build Patterns
 
 - Added a vetted Roblox build-pattern library (`src/lib/build-patterns.ts`): compact, complete, server-authoritative Luau exemplars for currency/leaderstats, DataStore persistence (pcall + UpdateAsync + BindToClose), validated RemoteEvents (type + cooldown + distance), server-authoritative shop purchases, mobile-friendly UI, server-validated weapon damage, a driveable VehicleSeat, and Animator-based animation. Every snippet is verified to pass the Luau syntax checker.
