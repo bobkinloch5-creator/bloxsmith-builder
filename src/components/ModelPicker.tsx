@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { ChevronDown, Cpu, Check } from "lucide-react";
+import { ChevronDown, Cpu, Check, Search } from "lucide-react";
 import { toast } from "sonner";
 import { getSiteModelHealth } from "@/lib/ai-model-health.functions";
 import { saveProjectAiSettings } from "@/lib/project-ai.functions";
@@ -17,6 +17,15 @@ import {
 } from "@/lib/ai-models";
 
 type ProviderId = SiteProviderId;
+type ModelSelection = { provider: ProviderId; model: string };
+
+function normalizeSelection(provider: ProviderId | null, model: string | null): ModelSelection {
+  const safeProvider: ProviderId =
+    provider && provider in SITE_PROVIDER_LABELS ? provider : "neokens";
+  const models = SITE_PROVIDER_MODELS[safeProvider];
+  const safeModel = model && models.includes(model) ? model : models[0];
+  return { provider: safeProvider, model: safeModel };
+}
 
 function statusDotClass(disabled?: boolean) {
   return disabled
@@ -54,8 +63,13 @@ export function ModelPicker({
   const save = useServerFn(saveProjectAiSettings);
   const loadHealth = useServerFn(getSiteModelHealth);
   const [open, setOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [, setSaving] = useState(false);
+  const [query, setQuery] = useState("");
+  const [selected, setSelected] = useState<ModelSelection>(() =>
+    normalizeSelection(provider, model),
+  );
   const ref = useRef<HTMLDivElement | null>(null);
+  const onChangeRef = useRef(onChange);
   const health = useQuery({
     queryKey: ["site-model-health"],
     queryFn: () => loadHealth(),
@@ -63,11 +77,54 @@ export function ModelPicker({
     staleTime: 15_000,
   });
 
-  const currentProvider: ProviderId =
-    provider && provider in SITE_PROVIDER_LABELS ? provider : "neokens";
-  const currentModel = model ?? SITE_PROVIDER_MODELS[currentProvider][0];
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
+
+  useEffect(() => {
+    if (provider || model) {
+      setSelected(normalizeSelection(provider, model));
+      return;
+    }
+    const stored = localStorage.getItem(`bloxsmith:model-picker:${projectId}`);
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored) as Partial<ModelSelection>;
+        const next = normalizeSelection(parsed.provider ?? null, parsed.model ?? null);
+        setSelected(next);
+        onChangeRef.current(next.provider, next.model);
+        return;
+      } catch {
+        localStorage.removeItem(`bloxsmith:model-picker:${projectId}`);
+      }
+    }
+    setSelected(normalizeSelection(provider, model));
+  }, [projectId, provider, model]);
+
+  const currentProvider = selected.provider;
+  const currentModel = selected.model;
   const getHealth = (p: ProviderId, m: string) => health.data?.models?.[`${p}:${m}`];
   const currentHealth = getHealth(currentProvider, currentModel);
+  const normalizedQuery = query.trim().toLowerCase();
+  const modelMatches = (p: ProviderId, m: string) => {
+    if (!normalizedQuery) return true;
+    const desc = SITE_MODEL_DESCRIPTIONS[m] ?? "";
+    const providerLabel = SITE_PROVIDER_LABELS[p];
+    const caps = getModelToolCapabilities(m);
+    const haystack = [
+      providerLabel,
+      m,
+      desc,
+      caps.webSearch ? "web search tools toolbox docs" : "",
+      caps.tools ? "tools" : "",
+      caps.thinking ? "thinking reasoning" : "",
+      `${getModelCreditMultiplier(m)}x credits`,
+      compactTokenPrice(getModelTokenPricing(m)) ?? "",
+    ]
+      .join(" ")
+      .toLowerCase();
+    return haystack.includes(normalizedQuery);
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -89,18 +146,24 @@ export function ModelPicker({
     // visually, even if the server-side persistence is slow or fails. The
     // chat/generation calls read this selection regardless of whether the
     // per-project row was saved.
+    setSelected({ provider: p, model: m });
+    localStorage.setItem(
+      `bloxsmith:model-picker:${projectId}`,
+      JSON.stringify({ provider: p, model: m }),
+    );
     onChange(p, m);
     setOpen(false);
     setSaving(true);
     try {
       await save({ data: { projectId, mode: "api_key", provider: p, model: m } });
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Don't revert the selection — just let the user know it won't persist
       // across reloads. Selecting still works for the current session.
       console.error("[ModelPicker] failed to save selection", err);
+      const message = err instanceof Error ? err.message : "";
       toast.error(
-        err?.message
-          ? `Model selected, but couldn't be saved: ${err.message}`
+        message
+          ? `Model selected, but couldn't be saved: ${message}`
           : "Model selected for now, but couldn't be saved to this project.",
       );
     } finally {
@@ -171,131 +234,165 @@ export function ModelPicker({
       </button>
       {open && (
         <div className="absolute bottom-full mb-2 left-0 z-50 w-[24rem] max-h-[28rem] overflow-y-auto rounded-xl border border-border/60 bg-surface-elevated/95 backdrop-blur-xl shadow-2xl p-2">
-          {(Object.keys(SITE_PROVIDER_LABELS) as ProviderId[]).map((p) => (
-            <div key={p} className="mb-2">
-              <div className="px-2 py-1 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold flex items-center justify-between">
-                <span>{SITE_PROVIDER_LABELS[p]}</span>
-                <span className="text-[9px] normal-case tracking-normal text-muted-foreground/70">
-                  cost = base × multiplier
-                </span>
-              </div>
-              {SITE_PROVIDER_MODELS[p].map((m) => {
-                const active = p === currentProvider && m === currentModel;
-                const desc = SITE_MODEL_DESCRIPTIONS[m];
-                const mult = getModelCreditMultiplier(m);
-                const caps = getModelToolCapabilities(m);
-                const pricing = getModelTokenPricing(m);
-                const priceBadge = compactTokenPrice(pricing);
-                const modelHealth = getHealth(p, m);
-                // Only block genuinely-down models, and only once health has
-                // actually loaded. While loading or on error, keep selectable.
-                const disabled = Boolean(health.isSuccess && modelHealth?.disabled);
-                const tone =
-                  mult >= 4
-                    ? "bg-destructive/20 text-destructive"
-                    : mult >= 2
-                      ? "bg-amber-500/20 text-amber-600 dark:text-amber-300"
-                      : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300";
-                return (
-                  <button
-                    key={`${p}:${m}`}
-                    type="button"
-                    disabled={disabled}
-                    onClick={() => pick(p, m)}
-                    title={
-                      modelHealth?.disabled
-                        ? `${modelHealth.label}. ${modelHealth.detail ?? "This model is temporarily disabled."}`
-                        : undefined
-                    }
-                    className={`w-full text-left rounded-md px-2 py-1.5 transition disabled:cursor-not-allowed disabled:opacity-60 ${
-                      active
-                        ? modelHealth?.disabled
-                          ? "bg-destructive/10 text-foreground"
-                          : "bg-primary/15 text-foreground"
-                        : modelHealth?.disabled
-                          ? "bg-destructive/5"
-                          : "hover:bg-surface/60"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="flex min-w-0 items-center gap-1.5">
+          <div className="sticky top-0 z-10 mb-2 rounded-lg border border-border/50 bg-surface-elevated/95 p-1.5 backdrop-blur">
+            <div className="flex items-center gap-1.5">
+              <Search className="h-3.5 w-3.5 text-muted-foreground" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search models, tools, thinking, price..."
+                className="min-w-0 flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground"
+                autoFocus
+              />
+              {query && (
+                <button
+                  type="button"
+                  onClick={() => setQuery("")}
+                  className="rounded-full px-2 py-0.5 text-[10px] font-medium text-muted-foreground hover:bg-surface/70"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
+          {(Object.keys(SITE_PROVIDER_LABELS) as ProviderId[]).map((p) => {
+            const visibleModels = SITE_PROVIDER_MODELS[p].filter((m) => modelMatches(p, m));
+            if (visibleModels.length === 0) return null;
+            return (
+              <div key={p} className="mb-2">
+                <div className="px-2 py-1 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold flex items-center justify-between">
+                  <span>{SITE_PROVIDER_LABELS[p]}</span>
+                  <span className="text-[9px] normal-case tracking-normal text-muted-foreground/70">
+                    cost = base × multiplier
+                  </span>
+                </div>
+                {visibleModels.map((m) => {
+                  const active = p === currentProvider && m === currentModel;
+                  const desc = SITE_MODEL_DESCRIPTIONS[m];
+                  const mult = getModelCreditMultiplier(m);
+                  const caps = getModelToolCapabilities(m);
+                  const pricing = getModelTokenPricing(m);
+                  const priceBadge = compactTokenPrice(pricing);
+                  const modelHealth = getHealth(p, m);
+                  // Only block genuinely-down models, and only once health has
+                  // actually loaded. While loading or on error, keep selectable.
+                  const disabled = Boolean(health.isSuccess && modelHealth?.disabled);
+                  const tone =
+                    mult >= 4
+                      ? "bg-destructive/20 text-destructive"
+                      : mult >= 2
+                        ? "bg-amber-500/20 text-amber-600 dark:text-amber-300"
+                        : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300";
+                  return (
+                    <button
+                      key={`${p}:${m}`}
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => pick(p, m)}
+                      title={
+                        modelHealth?.disabled
+                          ? `${modelHealth.label}. ${modelHealth.detail ?? "This model is temporarily disabled."}`
+                          : undefined
+                      }
+                      className={`w-full text-left rounded-md px-2 py-1.5 transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                        active
+                          ? modelHealth?.disabled
+                            ? "bg-destructive/10 text-foreground"
+                            : "bg-primary/15 text-foreground"
+                          : modelHealth?.disabled
+                            ? "bg-destructive/5"
+                            : "hover:bg-surface/60"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="flex min-w-0 items-center gap-1.5">
+                            <span
+                              className={`h-2 w-2 shrink-0 rounded-full ${statusDotClass(modelHealth?.disabled)}`}
+                              aria-hidden="true"
+                            />
+                            <span
+                              className={`truncate text-xs font-medium ${active ? "text-foreground" : "text-foreground/90"}`}
+                            >
+                              {m}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
                           <span
-                            className={`h-2 w-2 shrink-0 rounded-full ${statusDotClass(modelHealth?.disabled)}`}
-                            aria-hidden="true"
-                          />
-                          <span
-                            className={`truncate text-xs font-medium ${active ? "text-foreground" : "text-foreground/90"}`}
+                            className={`rounded-full px-1.5 py-px text-[9px] font-semibold ${
+                              modelHealth?.disabled
+                                ? "bg-destructive/15 text-destructive"
+                                : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300"
+                            }`}
                           >
-                            {m}
+                            {modelHealth?.disabled ? modelHealth.label : "Online"}
                           </span>
+                          {caps.webSearch ? (
+                            <span
+                              className="rounded-full bg-sky-500/15 px-1.5 py-px text-[9px] font-semibold text-sky-500 dark:text-sky-300"
+                              title="This model is intended for web_search, fetch_url, Roblox docs, and other tool calls."
+                            >
+                              Web/tools
+                            </span>
+                          ) : caps.tools ? (
+                            <span
+                              className="rounded-full bg-cyan-500/15 px-1.5 py-px text-[9px] font-semibold text-cyan-500 dark:text-cyan-300"
+                              title="This model can use basic BloxSmith tools, but is not the first pick for web search."
+                            >
+                              Tools
+                            </span>
+                          ) : null}
+                          {caps.thinking && (
+                            <span
+                              className="rounded-full bg-violet-500/15 px-1.5 py-px text-[9px] font-semibold text-violet-500 dark:text-violet-300"
+                              title="This model is a good fit for deeper reasoning / Thinking mode."
+                            >
+                              Thinking
+                            </span>
+                          )}
+                          <span
+                            className={`rounded-full px-1.5 py-px text-[9px] font-semibold ${tone}`}
+                            title={`Uses ${mult}× the base credit cost for each generation with this model`}
+                          >
+                            {mult}× cr
+                          </span>
+                          {priceBadge && (
+                            <span
+                              className="rounded-full bg-muted/70 px-1.5 py-px text-[9px] font-semibold text-muted-foreground"
+                              title={tokenPriceTitle(pricing)}
+                            >
+                              {priceBadge}
+                            </span>
+                          )}
+                          {active && <Check className="h-3 w-3 text-primary" />}
                         </div>
                       </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <span
-                          className={`rounded-full px-1.5 py-px text-[9px] font-semibold ${
-                            modelHealth?.disabled
-                              ? "bg-destructive/15 text-destructive"
-                              : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300"
-                          }`}
-                        >
-                          {modelHealth?.disabled ? modelHealth.label : "Online"}
-                        </span>
-                        {caps.webSearch ? (
-                          <span
-                            className="rounded-full bg-sky-500/15 px-1.5 py-px text-[9px] font-semibold text-sky-500 dark:text-sky-300"
-                            title="This model is intended for web_search, fetch_url, Roblox docs, and other tool calls."
-                          >
-                            Web/tools
-                          </span>
-                        ) : caps.tools ? (
-                          <span
-                            className="rounded-full bg-cyan-500/15 px-1.5 py-px text-[9px] font-semibold text-cyan-500 dark:text-cyan-300"
-                            title="This model can use basic BloxSmith tools, but is not the first pick for web search."
-                          >
-                            Tools
-                          </span>
-                        ) : null}
-                        {caps.thinking && (
-                          <span
-                            className="rounded-full bg-violet-500/15 px-1.5 py-px text-[9px] font-semibold text-violet-500 dark:text-violet-300"
-                            title="This model is a good fit for deeper reasoning / Thinking mode."
-                          >
-                            Thinking
-                          </span>
-                        )}
-                        <span
-                          className={`rounded-full px-1.5 py-px text-[9px] font-semibold ${tone}`}
-                          title={`Uses ${mult}× the base credit cost for each generation with this model`}
-                        >
-                          {mult}× cr
-                        </span>
-                        {priceBadge && (
-                          <span
-                            className="rounded-full bg-muted/70 px-1.5 py-px text-[9px] font-semibold text-muted-foreground"
-                            title={tokenPriceTitle(pricing)}
-                          >
-                            {priceBadge}
-                          </span>
-                        )}
-                        {active && <Check className="h-3 w-3 text-primary" />}
-                      </div>
-                    </div>
-                    {desc && (
-                      <div className="mt-0.5 text-[10px] leading-snug text-muted-foreground">
-                        {desc}
-                      </div>
-                    )}
-                    {modelHealth?.disabled && (
-                      <div className="mt-0.5 text-[10px] leading-snug text-destructive">
-                        {modelHealth.detail ?? "This model is temporarily disabled."}
-                      </div>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          ))}
+                      {desc && (
+                        <div className="mt-0.5 text-[10px] leading-snug text-muted-foreground">
+                          {desc}
+                        </div>
+                      )}
+                      {modelHealth?.disabled && (
+                        <div className="mt-0.5 text-[10px] leading-snug text-destructive">
+                          {modelHealth.detail ?? "This model is temporarily disabled."}
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })}
+          {normalizedQuery &&
+            !(Object.keys(SITE_PROVIDER_LABELS) as ProviderId[]).some((p) =>
+              SITE_PROVIDER_MODELS[p].some((m) => modelMatches(p, m)),
+            ) && (
+              <div className="rounded-lg border border-border/50 bg-surface/40 px-3 py-4 text-center text-xs text-muted-foreground">
+                No models match "{query}". Try a model name, provider, "web", "tools", "thinking",
+                or a credit price.
+              </div>
+            )}
           <div className="px-2 py-1 text-[10px] text-muted-foreground border-t border-border/40 mt-1 space-y-1">
             <div>Credits per generation = base cost × the model's multiplier.</div>
             <div className="text-muted-foreground/70">

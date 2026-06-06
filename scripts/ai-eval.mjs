@@ -23,8 +23,11 @@ const checks = [
     ],
   },
   {
+    // The rich build path lives in src/routes/execute.ts (+ the runAI server fn).
+    // /api/assistant/execute.ts is only the canned safe-fallback stub, so this
+    // check must target the real path the builder actually invokes.
     name: "Build path records provider health and uses model profiles",
-    file: "src/routes/api/assistant/execute.ts",
+    file: "src/routes/execute.ts",
     must: [
       /recordProviderHealth/,
       /getModelProfile/,
@@ -57,7 +60,7 @@ const checks = [
   },
   {
     name: "Build API uses persistent project memory",
-    file: "src/routes/api/assistant/execute.ts",
+    file: "src/routes/execute.ts",
     must: [
       /buildProjectMemoryBlock/,
       /rememberProjectInteraction/,
@@ -66,9 +69,13 @@ const checks = [
     ],
   },
   {
+    // The require-backdoor rule is now scoped to numeric marketplace module ids
+    // (require(12345)) — far fewer false positives than a bare require(. Assert
+    // the rule's message rather than the escaped regex source so the check stays
+    // robust to pattern tightening.
     name: "Roblox safety validation blocks common backdoors",
     file: "src/lib/sync-validation.ts",
-    must: [/BACKDOOR_PATTERNS/, /require\s*\(/, /loadstring/, /InsertService/],
+    must: [/BACKDOOR_PATTERNS/, /marketplace module id/, /loadstring/, /InsertService/],
   },
   {
     name: "Knowledge core tells models when to check official docs",

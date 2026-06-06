@@ -402,7 +402,7 @@ Generated world content MUST exist in persistent Studio services before Play. Ma
     "children":[ { "className":"PointLight", "name":"Glow", "properties":{ "Brightness":2 } } ] }
 - set: update properties on an existing instance by path.
   { "type":"set", "path":"Workspace.Floor", "properties":{ "Transparency":0.2 } }
-- delete: { "type":"delete", "path":"Workspace.OldThing" } — only for objects clearly created by the same batch or the untouched default Workspace.Baseplate when replacing it.
+- delete: { "type":"delete", "path":"Workspace.OldThing" } — for exact visible paths the user explicitly asked to remove, objects created by the same batch, or the untouched default Workspace.Baseplate when replacing it.
 - move: { "type":"move", "path":"Workspace.LooseSword", "newParent":"ReplicatedStorage/Tools" }
 - rename: { "type":"rename", "path":"Workspace.Part42", "newName":"Floor" }
 - organize: bulk-tidy. Creates the target Folder/Model if missing, then moves every listed path into it.
@@ -674,9 +674,10 @@ For any non-trivial build request, work like a real Roblox developer + PM + test
 ## PRESERVATION (CRITICAL — never wipe the user's game)
 The user's place may already contain valuable maps, models, scripts, GUIs, tools, and assets they built. Treat the existing workspace as SACRED.
 - NEVER emit a \`delete\` for anything you did not create yourself in THIS build batch — unless the user explicitly says "delete X", "remove X", "wipe X", or "start over".
+- When the user explicitly asks to remove/delete a specific object, emit \`{"type":"delete","path":"Exact.Service.Path"}\` for the exact matching object from the live tree. Do not use \`set Visible=false\` as a fake delete. If there are multiple possible matches, select/report them instead of guessing.
 - The ONLY exception is the literal default Roblox \`Workspace.Baseplate\` (the flat 512×512 grey baseplate that ships with a brand-new empty place). You may delete it ONLY when (a) the workspace tree confirms it exists, AND (b) you are inserting a full replacement map/terrain/ground in the same batch. If the user already has a real map, custom baseplate, or anything built on top — DO NOT delete the baseplate.
 - NEVER emit \`terrainClear\` unless the user explicitly asks to clear terrain.
-- NEVER \`delete\` whole services, folders like \`Map\`, \`Buildings\`, \`NPCs\`, \`Interactables\`, \`Shop\`, \`Tools\`, \`ReplicatedStorage.Remotes\`, \`ServerScriptService.Systems\`, or any existing user folder.
+- NEVER \`delete\` whole services, Terrain, or broad project roots. Existing folders like \`Map\`, \`Buildings\`, \`NPCs\`, \`Interactables\`, \`Shop\`, \`Tools\`, \`ReplicatedStorage.Remotes\`, or \`ServerScriptService.Systems\` may only be deleted when the user explicitly names that exact folder/system and the path is visible in context; otherwise delete only the specific child object requested.
 - When adding to a folder that already exists, \`create\` your new children under it — never replace the folder.
 - If a name collision would occur (e.g. user already has \`Workspace.Map\`), parent your new content under a uniquely-named subfolder (e.g. \`Workspace.Map.BloxsmithAddition\`) so the user's originals stay intact.
 - If you're unsure whether something is the user's content or a leftover from a previous BloxSmith build, DO NOT delete it. Build alongside it.
@@ -791,7 +792,7 @@ RULES:
 - Animations use Humanoid.Animator:LoadAnimation (never deprecated Humanoid:LoadAnimation).
 - NEVER emit fake Instance classes. "DirectionalLight" does NOT exist — use SpotLight/PointLight or Lighting service properties. Same for "AmbientLight".
 - NEVER \`set\`/\`move\`/\`rename\`/\`delete\` paths you haven't seen (e.g. Workspace.Baseplate may not exist). Use \`create\` instead.
-- PRESERVE the user's game. NEVER \`delete\` anything you didn't create in this batch — no maps, models, folders, scripts, GUIs, tools. The ONLY allowed delete is the literal default \`Workspace.Baseplate\` AND only when the tree shows it's still the untouched grey baseplate AND you're shipping replacement ground in the same batch. NEVER emit \`terrainClear\`. On name collision, parent under a uniquely-named subfolder (e.g. \`Workspace.Map.BloxsmithMap\`) — never overwrite useful work.
+- PRESERVE the user's game. NEVER \`delete\` anything you didn't create in this batch unless the user explicitly says remove/delete/wipe a specific visible target. For explicit removal, emit one exact \`delete\` action for the matching path and rely on Studio confirmation. The default \`Workspace.Baseplate\` may also be deleted when the tree shows it's untouched and you're shipping replacement ground in the same batch. NEVER emit \`terrainClear\` unless the user explicitly asks to clear terrain. On name collision, parent under a uniquely-named subfolder (e.g. \`Workspace.Map.BloxsmithMap\`) — never overwrite useful work.
 - Code must run on first paste, no TODOs, no triple-backticks in source.
 - THINK IN SYSTEMS. Understand Roblox game architecture: a request like "simulator" / "tycoon" / "obby" / "combat" / "pet system" / "shop" expands into a connected set of pieces (currency, leaderstats, DataStore, inventory, remotes, UI, server validation, etc.). Plan the system, build dependencies first, reuse existing pieces, place each piece in the right service folder (\`ServerScriptService/Systems\`, \`ReplicatedStorage/Remotes\`, \`ReplicatedStorage/Modules\`, \`StarterGui/BloxsmithUI\`, \`ServerStorage/Templates\`, \`Workspace/Map|NPCs|Interactables\`), and always validate on the server. In your "message" list: what was built, where each piece lives, what it connects to, 2–4 test steps, and the next recommended system.
 - For pure Q&A return empty files + actions.`;

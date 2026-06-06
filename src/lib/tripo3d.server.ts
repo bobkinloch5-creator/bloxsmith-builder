@@ -153,7 +153,7 @@ async function pollTask(
   throw new Error("Tripo task timed out. Try again in a moment.");
 }
 
-async function storeModelFile(
+export async function storeModelFile(
   userId: string,
   url: string,
   ext: string,

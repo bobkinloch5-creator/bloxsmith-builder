@@ -244,10 +244,14 @@ function deterministicActionsForSteps(opts: {
       step.actionType === "move" ||
       /wrong place|placement|local script|localscript|server script|serverscript/.test(text)
     ) {
-      actions.push({ type: "move", path: step.target, to: inferMoveDestination(step) });
+      // Plugin Actions.move reads `newParent` — emitting `to` left newParent nil
+      // and the instance was silently dumped into Workspace instead of moved.
+      actions.push({ type: "move", path: step.target, newParent: inferMoveDestination(step) });
     }
     if (step.actionType === "set" && step.target) {
-      actions.push({ type: "set", path: step.target, property: "Visible", value: true });
+      // Plugin Actions.set reads a `properties` map — emitting `{property,value}`
+      // made the fix a silent no-op. Use the canonical shape.
+      actions.push({ type: "set", path: step.target, properties: { Visible: true } });
     }
     if (/button|activated|mousebutton|clickable|clicking it does nothing/.test(text)) {
       buttonSteps.push(step);
@@ -812,8 +816,8 @@ export async function buildActionsForSteps(opts: {
       '{"type":"script","path":"ServerScriptService/Name","source":"<luau>"}\n' +
       '{"type":"create","className":"RemoteEvent","name":"Buy","parent":"ReplicatedStorage"}\n' +
       '{"type":"create","className":"Folder","name":"Remotes","parent":"ReplicatedStorage"}\n' +
-      '{"type":"move","path":"StarterGui/Handler","to":"ServerScriptService"}\n' +
-      '{"type":"set","path":"...","property":"...","value":...}\n' +
+      '{"type":"move","path":"StarterGui/Handler","newParent":"ServerScriptService"}\n' +
+      '{"type":"set","path":"...","properties":{"PropertyName":"value"}}\n' +
       '{"type":"repairPlacement","path":"Workspace/Map","limit":180}\n' +
       "Use valid Roblox service paths and syntactically valid Luau. Keep changes minimal and focused on the steps. Use repairPlacement for messy, floating, overlapping, or poorly arranged map content. No prose, no markdown.";
     const user = `USER REQUEST: ${opts.request}\n\nAPPROVED STEPS:\n${JSON.stringify(opts.steps, null, 0)}\n\nFILE INDEX:\n${JSON.stringify(fileIndex.slice(0, 120), null, 0)}`;
