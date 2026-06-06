@@ -468,8 +468,13 @@ function Admin() {
   };
 
   const resendSignupEmail = async (row: Row) => {
+    const email = (row.email || "").trim();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      toast.error("No valid email on file for this user — can't resend a confirmation.");
+      return;
+    }
     try {
-      const res = await resendConfirm({ data: { userId: row.id, email: row.email } });
+      const res = await resendConfirm({ data: { userId: row.id, email } });
       toast.success(res.sent ? "Confirmation email resent." : "Email already confirmed.");
       setEmailConfirmed((prev) => ({ ...prev, [row.id]: true }));
     } catch (err) {
