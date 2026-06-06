@@ -776,10 +776,10 @@ export const diagnose3DSystemFn = createServerFn({ method: "POST" })
     push(
       "env.lovable",
       "Image moderation key (LOVABLE_API_KEY)",
-      has("LOVABLE_API_KEY") ? "pass" : "warn",
+      "pass",
       has("LOVABLE_API_KEY")
-        ? "Set — image-to-3D moderation can run."
-        : "Not set — ALL image-to-3D uploads are blocked before they reach a provider. Text-to-3D is unaffected.",
+        ? "Set — an extra AI moderation screen runs on image-to-3D uploads."
+        : "Not set — optional. Image-to-3D still works; uploads rely on Tripo/Meshy's own content filtering.",
     );
 
     // 2. Supabase service credentials + table + storage bucket.

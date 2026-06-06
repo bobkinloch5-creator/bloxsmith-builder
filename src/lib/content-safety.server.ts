@@ -106,12 +106,14 @@ export async function checkImageSafeFor3D(dataUrl: string): Promise<
     return { safe: false, reason: "Image uploads must be 8 MB or smaller." };
   }
 
+  // Lovable AI moderation is an OPTIONAL extra screen. When it isn't configured
+  // we don't block image-to-3D — Tripo and Meshy enforce their own content
+  // policies and reject unsafe uploads, and the text prompt is still screened by
+  // checkTextSafeFor3D. The gate only rejects when moderation actually runs and
+  // flags the image as unsafe.
   const lovableKey = process.env.LOVABLE_API_KEY;
   if (!lovableKey) {
-    return {
-      safe: false,
-      reason: "Image moderation is unavailable right now, so image-to-3D uploads are paused.",
-    };
+    return { safe: true };
   }
 
   try {
@@ -141,7 +143,10 @@ export async function checkImageSafeFor3D(dataUrl: string): Promise<
       signal: AbortSignal.timeout(20_000),
     });
     if (!r.ok) {
-      return { safe: false, reason: "Image moderation failed. Try again with a different image." };
+      // Gateway down or out of credits (e.g. HTTP 402). Don't block the user —
+      // let Tripo/Meshy's own moderation handle it.
+      console.warn(`[content-safety] image moderation unavailable (HTTP ${r.status}); allowing upload.`);
+      return { safe: true };
     }
     const j: any = await r.json();
     const text = String(j?.choices?.[0]?.message?.content ?? "{}");
@@ -153,6 +158,9 @@ export async function checkImageSafeFor3D(dataUrl: string): Promise<
       reason: verdict?.reason || "That image does not meet the safe Roblox asset rules.",
     };
   } catch {
-    return { safe: false, reason: "Image moderation failed. Try again with a safe asset image." };
+    // Network error / timeout reaching the moderation gateway — fail open and
+    // rely on the provider's own content filtering rather than blocking.
+    console.warn("[content-safety] image moderation request failed; allowing upload.");
+    return { safe: true };
   }
 }
