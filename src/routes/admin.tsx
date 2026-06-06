@@ -4,7 +4,7 @@ import { useAuth } from "@/lib/auth-context";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { requireAdmin } from "@/lib/admin.functions";
+import { requireAdmin, adminAdjustCreditsFn } from "@/lib/admin.functions";
 import { useServerFn } from "@tanstack/react-start";
 import { CheckCircle2, XCircle, Loader2, PlayCircle, RefreshCw } from "lucide-react";
 import { testAllSiteModels, type ModelTestResult } from "@/lib/model-test.functions";
@@ -124,6 +124,7 @@ function Admin() {
   const [emailConfirmed, setEmailConfirmed] = useState<Record<string, boolean>>({});
   const loadModeration = useServerFn(loadModeratorDashboard);
   const resendConfirm = useServerFn(resendConfirmationForUser);
+  const adjustCreditsServer = useServerFn(adminAdjustCreditsFn);
 
   const loadUsers = async () => {
     const { data: profs } = await supabase
@@ -435,15 +436,18 @@ function Admin() {
       toast.error("Only the owner can adjust credits.");
       return;
     }
-    const { data, error } = await supabase.rpc("admin_adjust_credits", {
-      _user_id: id,
-      _amount: delta,
-      _reason: reason,
-    });
-    if (error) return toast.error(error.message);
-    const next = typeof data === "number" ? data : 0;
-    setRows((p) => p.map((x) => (x.id === id ? { ...x, credits: next } : x)));
-    toast.success(`${delta >= 0 ? "Gifted" : "Removed"} ${Math.abs(delta)} credits`);
+    // Routes through the service-role server function so it works regardless of
+    // the admin_adjust_credits SQL RPC (which 409s on the drifted ledger schema).
+    try {
+      const res = (await adjustCreditsServer({
+        data: { userId: id, amount: delta, reason },
+      })) as { ok: true; credits: number } | { ok: false; error: string };
+      if (!res.ok) return toast.error(res.error);
+      setRows((p) => p.map((x) => (x.id === id ? { ...x, credits: res.credits } : x)));
+      toast.success(`${delta >= 0 ? "Gifted" : "Removed"} ${Math.abs(delta)} credits`);
+    } catch (e: any) {
+      toast.error(e?.message ?? "Could not adjust credits.");
+    }
   };
 
   const giftCustom = async (row: Row) => {

@@ -8,8 +8,12 @@ import type { Group as ThreeGroup } from "three";
 import { toast } from "sonner";
 import {
   Accessibility,
+  Activity,
+  AlertTriangle,
   BadgeCheck,
   Bone,
+  CheckCircle2,
+  XCircle,
   Box,
   Boxes,
   Brush,
@@ -79,7 +83,13 @@ import type { LucideIcon } from "lucide-react";
 import { Header, Footer } from "@/components/layout";
 import { useAuth } from "@/lib/auth-context";
 import { supabase } from "@/integrations/supabase/client";
-import { generate3DModelFn, get3DStatusFn, type Generate3DResult } from "@/lib/tripo.functions";
+import {
+  generate3DModelFn,
+  get3DStatusFn,
+  diagnose3DSystemFn,
+  type Generate3DResult,
+  type Diag3DCheck,
+} from "@/lib/tripo.functions";
 
 export const Route = createFileRoute("/generate-3d")({
   component: Generate3DPage,
@@ -617,6 +627,7 @@ function Generate3DPage() {
   const { user } = useAuth();
   const run = useServerFn(generate3DModelFn);
   const getStatus = useServerFn(get3DStatusFn);
+  const runDiagnostics = useServerFn(diagnose3DSystemFn);
   const [kind, setKind] = useState<Kind>("model");
   const [inputMode, setInputMode] = useState<"text" | "image">("text");
   const [prompt, setPrompt] = useState("");
@@ -628,6 +639,8 @@ function Generate3DPage() {
   const [nextAvailable, setNextAvailable] = useState<string | null>(null);
   const [limitMsg, setLimitMsg] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
+  const [diagChecks, setDiagChecks] = useState<Diag3DCheck[] | null>(null);
+  const [diagBusy, setDiagBusy] = useState(false);
   const [progress, setProgress] = useState(0);
   const [stage, setStage] = useState("Ready");
   const [elapsed, setElapsed] = useState(0);
@@ -829,6 +842,18 @@ function Generate3DPage() {
     setPrompt(preset.prompt);
   };
 
+  const doDiagnostics = async () => {
+    setDiagBusy(true);
+    try {
+      const res = (await runDiagnostics({ data: {} } as any)) as { checks: Diag3DCheck[] };
+      setDiagChecks(res.checks ?? []);
+    } catch (e: any) {
+      toast.error(e?.message ?? "Diagnostics failed to run.");
+    } finally {
+      setDiagBusy(false);
+    }
+  };
+
   const generate = async () => {
     if (!user) return toast.error("Please log in to generate.");
     if (locked) return toast.error("Your weekly 3D Studio generation is already used.");
@@ -988,6 +1013,54 @@ function Generate3DPage() {
           </div>
         )}
 
+        {status?.isOwner && (
+          <section className="rounded-2xl border border-indigo-500/30 bg-indigo-500/5 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2 font-bold text-indigo-200">
+                  <Activity className="h-4 w-4" /> 3D system diagnostics
+                </div>
+                <p className="mt-1 max-w-2xl text-xs font-medium text-muted-foreground">
+                  Owner-only. Checks provider keys, the Supabase table + storage bucket, and live
+                  provider authentication. No secret values are shown and no billable generation is
+                  created.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={doDiagnostics}
+                disabled={diagBusy}
+                className="inline-flex items-center gap-2 rounded-xl border border-indigo-400/40 bg-indigo-500/15 px-4 py-2 text-xs font-bold text-indigo-100 transition hover:bg-indigo-500/25 disabled:opacity-60 cursor-pointer"
+              >
+                {diagBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Activity className="h-4 w-4" />}
+                {diagBusy ? "Running checks…" : diagChecks ? "Re-run checks" : "Run diagnostics"}
+              </button>
+            </div>
+            {diagChecks && (
+              <ul className="mt-3 space-y-2">
+                {diagChecks.map((c) => (
+                  <li
+                    key={c.id}
+                    className="flex items-start gap-2.5 rounded-xl border border-border/70 bg-background/40 p-3 text-xs"
+                  >
+                    {c.status === "pass" ? (
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
+                    ) : c.status === "warn" ? (
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+                    ) : (
+                      <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
+                    )}
+                    <div>
+                      <div className="font-bold text-foreground">{c.label}</div>
+                      <div className="mt-0.5 leading-normal text-muted-foreground">{c.detail}</div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
+
         <section className="grid gap-3.5 md:grid-cols-3">
           <ModeCard
             active={kind === "model"}
@@ -1029,6 +1102,36 @@ function Generate3DPage() {
                 <div className="mb-4 grid grid-cols-2 gap-1 rounded-xl border border-border/80 bg-background/20 p-1">
                   <Tab active={inputMode === "text"} onClick={() => setInputMode("text")} icon={<WandSparkles className="h-3.5 w-3.5" />} label="Text to 3D" />
                   <Tab active={inputMode === "image"} onClick={() => setInputMode("image")} icon={<ImagePlus className="h-3.5 w-3.5" />} label="Image to 3D" />
+                </div>
+              )}
+
+              {kind === "model" && (
+                <div className="mb-4">
+                  <div className="mb-1.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    3D provider
+                  </div>
+                  <div className="flex gap-2">
+                    {(["tripo", "meshy"] as const).map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => setProvider(p)}
+                        disabled={busy}
+                        className={`flex-1 rounded-xl border px-3 py-2.5 text-xs font-bold capitalize transition cursor-pointer disabled:opacity-60 ${
+                          provider === p
+                            ? "border-primary bg-primary/15 text-foreground shadow-sm"
+                            : "border-border/70 bg-background/25 text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                        }`}
+                      >
+                        {p === "tripo" ? "Tripo 3D" : "Meshy AI"}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="mt-1 text-[10px] text-muted-foreground">
+                    {provider === "tripo"
+                      ? "Tripo: best for stylized props, rigging, and FBX export."
+                      : "Meshy: best for realistic PBR textures (requires MESHY_API_KEY)."}
+                  </p>
                 </div>
               )}
 
@@ -1250,29 +1353,6 @@ function Generate3DPage() {
 
                   {kind === "model" && (
                     <>
-                      <Group label="AI engine">
-                        <div className="flex gap-2">
-                          {(["tripo", "meshy"] as const).map((p) => (
-                            <button
-                              key={p}
-                              type="button"
-                              onClick={() => setProvider(p)}
-                              className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium capitalize transition ${
-                                provider === p
-                                  ? "border-primary bg-primary text-primary-foreground"
-                                  : "border-border bg-surface hover:bg-surface-elevated"
-                              }`}
-                            >
-                              {p === "tripo" ? "Tripo 3D" : "Meshy AI"}
-                            </button>
-                          ))}
-                        </div>
-                        <p className="mt-1 text-[10px] text-muted-foreground">
-                          {provider === "tripo"
-                            ? "Tripo: best for stylized props, rigging, and FBX export."
-                            : "Meshy: best for realistic textures and PBR materials."}
-                        </p>
-                      </Group>
                       <Group label="Quality"><VisualChips value={quality} set={(v) => setQuality(v as typeof quality)} items={["turbo", "standard", "detailed"]} images={qualityImages} compact /></Group>
                       <Group label="Format"><VisualChips value={format} set={(v) => setFormat(v as typeof format)} items={["GLB", "OBJ", "FBX"]} images={formatImages} compact /></Group>
                       <label className="block text-xs font-medium">

@@ -150,11 +150,13 @@ async function storeModelFile(
       : ext === "fbx"
         ? "application/octet-stream"
         : "application/octet-stream";
+  const { ensureGeneratedModelsBucket, GENERATED_MODELS_BUCKET } = await import("./tripo3d.server");
+  await ensureGeneratedModelsBucket();
   const { error: upErr } = await supabaseAdmin.storage
-    .from("generated-3d-models")
+    .from(GENERATED_MODELS_BUCKET)
     .upload(filePath, buf, { contentType, upsert: false });
   if (upErr) throw new Error(`Could not save the model file: ${upErr.message}`);
-  const { data: pub } = supabaseAdmin.storage.from("generated-3d-models").getPublicUrl(filePath);
+  const { data: pub } = supabaseAdmin.storage.from(GENERATED_MODELS_BUCKET).getPublicUrl(filePath);
   return { filePath, fileUrl: pub.publicUrl };
 }
 

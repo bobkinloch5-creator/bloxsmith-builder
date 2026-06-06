@@ -535,22 +535,40 @@ export const generate3DModelFn = createServerFn({ method: "POST" })
     }
 
     // 5. Record the generation (drives the weekly limit + the user's history).
-    await (supabaseAdmin as any).from("model_generations_3d").insert({
-      user_id: userId,
-      project_id: data.projectId ?? null,
-      prompt: data.generationKind === "text" ? data.textWords : data.prompt,
-      generation_type: data.generationKind,
-      status: "success",
-      tripo_task_id: result.tripoTaskId,
-      file_path: result.filePath,
-      file_url: result.fileUrl,
-      format: result.format,
-      credits_used: isOwner ? 0 : generationCost,
-      settings,
-      preview_url: "previewGlbUrl" in result ? result.previewGlbUrl ?? null : null,
-      studio_file_path: studioFilePath,
-      cooldown_unlock_at: new Date(Date.now() + WEEKLY_WINDOW_MS).toISOString(),
-    });
+    //    A real file already exists and the user has been charged, so a DB
+    //    hiccup here must NOT surface as a failed generation — capture and log
+    //    the error instead of letting it bubble up (or be silently swallowed).
+    try {
+      const { error: recordError } = await (supabaseAdmin as any)
+        .from("model_generations_3d")
+        .insert({
+          user_id: userId,
+          project_id: data.projectId ?? null,
+          prompt: data.generationKind === "text" ? data.textWords : data.prompt,
+          generation_type: data.generationKind,
+          status: "success",
+          tripo_task_id: result.tripoTaskId,
+          file_path: result.filePath,
+          file_url: result.fileUrl,
+          format: result.format,
+          credits_used: isOwner ? 0 : generationCost,
+          settings,
+          preview_url: "previewGlbUrl" in result ? (result.previewGlbUrl ?? null) : null,
+          studio_file_path: studioFilePath,
+          cooldown_unlock_at: new Date(Date.now() + WEEKLY_WINDOW_MS).toISOString(),
+        });
+      if (recordError) {
+        console.warn(
+          "[generate3DModelFn] could not record generation (weekly limit/history may be off):",
+          String(recordError.message ?? recordError).slice(0, 200),
+        );
+      }
+    } catch (recErr) {
+      console.warn(
+        "[generate3DModelFn] recording generation threw:",
+        String(recErr).slice(0, 200),
+      );
+    }
 
     const nextAvailable = new Date(Date.now() + WEEKLY_WINDOW_MS).toISOString();
 
@@ -678,3 +696,242 @@ export const get3DStatusFn = createServerFn({ method: "POST" })
       };
     },
   );
+
+// Owner/admin-only self-check for the whole 3D generation pipeline. It reports
+// exactly which piece is misconfigured (provider keys, Supabase table/bucket,
+// provider auth) so "it just errors" becomes a precise, actionable checklist.
+// It NEVER returns secret values — only booleans/HTTP statuses — and it never
+// creates a billable provider task (the provider pings hit a non-existent task
+// id purely to check whether the API key authenticates).
+export type Diag3DCheck = {
+  id: string;
+  label: string;
+  status: "pass" | "warn" | "fail";
+  detail: string;
+};
+export type Diagnose3DResult = {
+  ok: boolean;
+  ranAt: string;
+  checks: Diag3DCheck[];
+};
+
+export const diagnose3DSystemFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(() => ({}))
+  .handler(async ({ context }): Promise<Diagnose3DResult> => {
+    const { userId, supabase } = context as {
+      userId: string;
+      supabase: import("@supabase/supabase-js").SupabaseClient;
+    };
+
+    const isOwner = await isGeneratorOwner(userId, supabase);
+    if (!isOwner) {
+      return {
+        ok: false,
+        ranAt: new Date().toISOString(),
+        checks: [
+          {
+            id: "auth",
+            label: "Access",
+            status: "fail",
+            detail: "Diagnostics are restricted to owner/admin accounts.",
+          },
+        ],
+      };
+    }
+
+    const checks: Diag3DCheck[] = [];
+    const push = (
+      id: string,
+      label: string,
+      status: Diag3DCheck["status"],
+      detail: string,
+    ) => checks.push({ id, label, status, detail });
+    const has = (name: string) => Boolean(process.env[name] && String(process.env[name]).trim());
+
+    // 1. Provider + moderation keys (presence only — values are never returned).
+    const tripoSet = has("TRIPO_API_KEY") || has("TRIPO_KEY");
+    push(
+      "env.tripo",
+      "Tripo API key (TRIPO_API_KEY)",
+      tripoSet ? "pass" : "fail",
+      tripoSet ? "Set." : "Missing — every Tripo model generation will fail immediately.",
+    );
+    push(
+      "env.tripoFallback",
+      "Tripo fallback key (TRIPO_FALLBACK_API_KEY)",
+      has("TRIPO_FALLBACK_API_KEY") ? "pass" : "warn",
+      has("TRIPO_FALLBACK_API_KEY")
+        ? "Set — automatic retry on a backup key is available."
+        : "Not set — optional; without it there is no auto-fallback if the main Tripo key fails.",
+    );
+    push(
+      "env.meshy",
+      "Meshy API key (MESHY_API_KEY)",
+      has("MESHY_API_KEY") ? "pass" : "warn",
+      has("MESHY_API_KEY")
+        ? "Set."
+        : "Not set — choosing the Meshy provider will fail (optional if you only use Tripo).",
+    );
+    push(
+      "env.lovable",
+      "Image moderation key (LOVABLE_API_KEY)",
+      has("LOVABLE_API_KEY") ? "pass" : "warn",
+      has("LOVABLE_API_KEY")
+        ? "Set — image-to-3D moderation can run."
+        : "Not set — ALL image-to-3D uploads are blocked before they reach a provider. Text-to-3D is unaffected.",
+    );
+
+    // 2. Supabase service credentials + table + storage bucket.
+    let admin: any = null;
+    try {
+      const mod = await import("@/integrations/supabase/client.server");
+      admin = mod.supabaseAdmin;
+      // Touch a property to force the lazy client to initialise so that any
+      // missing SUPABASE_URL / SERVICE_ROLE_KEY throws here, not mid-generation.
+      void (admin as any).storage;
+      push(
+        "supabase.env",
+        "Supabase service credentials",
+        "pass",
+        "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are configured.",
+      );
+    } catch (e: any) {
+      admin = null;
+      push(
+        "supabase.env",
+        "Supabase service credentials",
+        "fail",
+        String(e?.message ?? e).slice(0, 200),
+      );
+    }
+
+    if (admin) {
+      try {
+        const { error } = await (admin as any)
+          .from("model_generations_3d")
+          .select("id", { head: true, count: "exact" })
+          .limit(1);
+        if (error) {
+          push(
+            "supabase.table",
+            "Table model_generations_3d",
+            "fail",
+            `Not readable: ${error.message}. Apply the 3D migrations to this Supabase project.`,
+          );
+        } else {
+          push("supabase.table", "Table model_generations_3d", "pass", "Present and readable.");
+        }
+      } catch (e: any) {
+        push(
+          "supabase.table",
+          "Table model_generations_3d",
+          "fail",
+          String(e?.message ?? e).slice(0, 200),
+        );
+      }
+
+      try {
+        // Proactively create the bucket if it's missing (idempotent) so this
+        // owner "fix it" button repairs the most common failure on the spot.
+        let created = false;
+        try {
+          const { ensureGeneratedModelsBucket } = await import("./tripo3d.server");
+          await ensureGeneratedModelsBucket();
+          created = true;
+        } catch {
+          /* fall through to the read check below */
+        }
+        const { error } = await (admin as any).storage
+          .from("generated-3d-models")
+          .list("", { limit: 1 });
+        if (error) {
+          push(
+            "supabase.bucket",
+            "Storage bucket generated-3d-models",
+            "fail",
+            `Not reachable: ${error.message}. Could not auto-create it either — check service-role storage permissions.`,
+          );
+        } else {
+          push(
+            "supabase.bucket",
+            "Storage bucket generated-3d-models",
+            "pass",
+            created
+              ? "Present (auto-created if missing) — generated files can be stored and served."
+              : "Reachable — generated model files can be stored and served.",
+          );
+        }
+      } catch (e: any) {
+        push(
+          "supabase.bucket",
+          "Storage bucket generated-3d-models",
+          "fail",
+          String(e?.message ?? e).slice(0, 200),
+        );
+      }
+    }
+
+    // 3. Provider authentication pings. These GET a non-existent task id, so no
+    //    billable generation is created — we only read the HTTP status to learn
+    //    whether the key authenticates (401/403 = bad key) or not.
+    const tripoKey = process.env.TRIPO_API_KEY || process.env.TRIPO_KEY;
+    if (tripoKey) {
+      try {
+        const res = await fetch(
+          "https://api.tripo3d.ai/v2/openapi/task/00000000-0000-0000-0000-000000000000",
+          { headers: { Authorization: `Bearer ${tripoKey}` }, signal: AbortSignal.timeout(12_000) },
+        );
+        if (res.status === 401 || res.status === 403) {
+          push(
+            "tripo.auth",
+            "Tripo authentication",
+            "fail",
+            `Tripo rejected the key (HTTP ${res.status}). It is invalid, expired, or out of quota.`,
+          );
+        } else {
+          push("tripo.auth", "Tripo authentication", "pass", `Key accepted (HTTP ${res.status}).`);
+        }
+      } catch (e: any) {
+        push(
+          "tripo.auth",
+          "Tripo authentication",
+          "warn",
+          `Could not reach Tripo to verify the key: ${String(e?.message ?? e).slice(0, 120)}`,
+        );
+      }
+    }
+
+    const meshyKey = process.env.MESHY_API_KEY;
+    if (meshyKey) {
+      try {
+        const res = await fetch(
+          "https://api.meshy.ai/openapi/v2/text-to-3d/00000000-0000-0000-0000-000000000000",
+          { headers: { Authorization: `Bearer ${meshyKey}` }, signal: AbortSignal.timeout(12_000) },
+        );
+        if (res.status === 401 || res.status === 403) {
+          push(
+            "meshy.auth",
+            "Meshy authentication",
+            "fail",
+            `Meshy rejected the key (HTTP ${res.status}). It is invalid, expired, or out of quota.`,
+          );
+        } else {
+          push("meshy.auth", "Meshy authentication", "pass", `Key accepted (HTTP ${res.status}).`);
+        }
+      } catch (e: any) {
+        push(
+          "meshy.auth",
+          "Meshy authentication",
+          "warn",
+          `Could not reach Meshy to verify the key: ${String(e?.message ?? e).slice(0, 120)}`,
+        );
+      }
+    }
+
+    return {
+      ok: !checks.some((c) => c.status === "fail"),
+      ranAt: new Date().toISOString(),
+      checks,
+    };
+  });

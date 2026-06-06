@@ -153,6 +153,36 @@ async function pollTask(
   throw new Error("Tripo task timed out. Try again in a moment.");
 }
 
+export const GENERATED_MODELS_BUCKET = "generated-3d-models";
+let bucketEnsured = false;
+
+/**
+ * Guarantee the storage bucket exists before we upload to it.
+ *
+ * The SQL migration creates `generated-3d-models`, but on hosted/Lovable
+ * Supabase that migration may never have been applied — in which case every
+ * upload fails with "Bucket not found" (which is exactly the error users hit).
+ * The service-role client is allowed to create buckets, so we self-heal here.
+ * Idempotent: an "already exists" response is treated as success, and the
+ * result is cached so we only attempt creation once per server instance.
+ */
+export async function ensureGeneratedModelsBucket(): Promise<void> {
+  if (bucketEnsured) return;
+  const { error } = await supabaseAdmin.storage.createBucket(GENERATED_MODELS_BUCKET, {
+    public: true,
+  });
+  if (error && !/exist|already|duplicate/i.test(String(error.message ?? error))) {
+    // Creation genuinely failed (e.g. permissions). Don't cache success — let
+    // the caller's upload surface the definitive error to the user.
+    console.warn(
+      "[3d] could not ensure storage bucket:",
+      String(error.message ?? error).slice(0, 160),
+    );
+    return;
+  }
+  bucketEnsured = true;
+}
+
 export async function storeModelFile(
   userId: string,
   url: string,
@@ -164,11 +194,12 @@ export async function storeModelFile(
   const filePath = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
   const contentType =
     ext === "zip" ? "application/zip" : ext === "glb" ? "model/gltf-binary" : "application/octet-stream";
+  await ensureGeneratedModelsBucket();
   const { error: upErr } = await supabaseAdmin.storage
-    .from("generated-3d-models")
+    .from(GENERATED_MODELS_BUCKET)
     .upload(filePath, buf, { contentType, upsert: false });
   if (upErr) throw new Error(`Could not save the model file: ${upErr.message}`);
-  const { data: pub } = supabaseAdmin.storage.from("generated-3d-models").getPublicUrl(filePath);
+  const { data: pub } = supabaseAdmin.storage.from(GENERATED_MODELS_BUCKET).getPublicUrl(filePath);
   return { filePath, fileUrl: pub.publicUrl };
 }
 
@@ -180,11 +211,12 @@ export async function storeGeneratedAssetFile(
 ): Promise<{ filePath: string; fileUrl: string }> {
   const cleanExt = ext.replace(/[^a-z0-9]/gi, "").toLowerCase() || "txt";
   const filePath = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${cleanExt}`;
+  await ensureGeneratedModelsBucket();
   const { error: upErr } = await supabaseAdmin.storage
-    .from("generated-3d-models")
+    .from(GENERATED_MODELS_BUCKET)
     .upload(filePath, Buffer.from(content, "utf8"), { contentType, upsert: false });
   if (upErr) throw new Error(`Could not save the generated Studio package: ${upErr.message}`);
-  const { data: pub } = supabaseAdmin.storage.from("generated-3d-models").getPublicUrl(filePath);
+  const { data: pub } = supabaseAdmin.storage.from(GENERATED_MODELS_BUCKET).getPublicUrl(filePath);
   return { filePath, fileUrl: pub.publicUrl };
 }
 
