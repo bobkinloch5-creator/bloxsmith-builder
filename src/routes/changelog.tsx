@@ -48,6 +48,31 @@ const tagStyles = {
 
 export const changelogItems = [
   {
+    version: "v3.9.5",
+    date: "June 6, 2026",
+    title: "Smarter Creation — Vetted Build Patterns",
+    description:
+      "BloxSmith now anchors builds on a library of proven, server-authoritative Roblox code patterns, adapting them for the systems each request needs instead of writing boilerplate from scratch.",
+    updates: [
+      {
+        category: "AI",
+        tagColor: tagStyles.ai,
+        icon: Library,
+        title: "Vetted Build Patterns",
+        detail:
+          "When a request needs currency/leaderstats, DataStore saves, validated RemoteEvents, a shop, mobile UI, weapon damage, vehicles, or animations, the builder injects compact, correct, server-authoritative Luau exemplars for exactly those systems — so the AI adapts proven code (server authority, pcall DataStores, validated remotes, Animator:LoadAnimation, task.*) instead of reinventing the boilerplate. Tiny edits that match nothing stay lean.",
+      },
+      {
+        category: "AI",
+        tagColor: tagStyles.ai,
+        icon: Rocket,
+        title: "Autopilot Uses Them Too",
+        detail:
+          "Whole-game Autopilot seeds the same vetted patterns into its server-systems pass, so full games come out with correct economy, persistence, and anti-exploit wiring on the first try.",
+      },
+    ],
+  },
+  {
     version: "v3.9.4",
     date: "June 6, 2026",
     title: "Self-Correcting Builds & Clear Viewer Mode",

@@ -2212,6 +2212,12 @@ export const generateWithAI = createServerFn({ method: "POST" })
       liveInstanceCount: liveContext?.instance_count ?? null,
     });
 
+    // Vetted code exemplars for whatever systems this request needs (currency,
+    // DataStore, validated remotes, shop, UI, combat, vehicle, animation). Empty
+    // string for tiny edits that match nothing, so trivial requests stay lean.
+    const { buildPatternLibraryBlock } = await import("./build-patterns");
+    const patternBlock = buildPatternLibraryBlock(prompt);
+
     let result: { message: string; files: GenFile[]; actions: GenAction[] } = {
       message: "",
       files: [],
@@ -2224,7 +2230,7 @@ export const generateWithAI = createServerFn({ method: "POST" })
       ? `\n\nREFERENCE BUILDING REPLICA MODE:\n- A reference image may be attached. Analyze the visible architecture before emitting actions: silhouette, floor count, roof shape, facade colors, materials, windows, door placement, trim, stairs, balconies, pillars, signs, lights, and landscaping.\n- Return a complete Roblox-scale Model under Workspace/Map/Buildings/<DescriptiveName>, not a single block and not an empty folder.\n- Minimum action quality: create Workspace/Map and Workspace/Map/Buildings, one Model, ground/spawn/path, 20+ anchored visible Part/WedgePart/MeshPart details, glass windows, door, trim, roof, and a select action on the Model.\n- Prefer procedural parts for the reference structure so it resembles the image; only use toolbox assets for supporting props/landscaping.\n- If some image details are unclear, infer a polished matching building and say what you inferred in the message.\n`
       : "";
     try {
-      fullPrompt = `${memoryBlock ? `${memoryBlock}\n\n` : ""}${studioErrorBlock ? `${studioErrorBlock}\n\n` : ""}${liveBlock}\n\n${smartBlock}${mapRequest && mapDirective ? `\n\n${mapDirective}` : ""}\n\nFULL PROJECT FILE MAP (${(allFiles ?? []).length} files - every file your project has, by location):\n${projectMap || "  (no files yet)"}\n\nRelevant project files (with content preview):\n${filesBlock || "(none indexed)"}\n\nUser request:\n${prompt}\n\nRules:\n- You have FULL AWARENESS of the project above. Reference real files by path. NEVER duplicate something that already exists - MODIFY it.\n- Interpret short, typo-heavy, or broad requests by using the SMART BUILD ROUTER above. Preserve the latest user request exactly, then infer practical Roblox defaults.
+      fullPrompt = `${memoryBlock ? `${memoryBlock}\n\n` : ""}${studioErrorBlock ? `${studioErrorBlock}\n\n` : ""}${liveBlock}\n\n${smartBlock}${mapRequest && mapDirective ? `\n\n${mapDirective}` : ""}${patternBlock ? `\n\n${patternBlock}` : ""}\n\nFULL PROJECT FILE MAP (${(allFiles ?? []).length} files - every file your project has, by location):\n${projectMap || "  (no files yet)"}\n\nRelevant project files (with content preview):\n${filesBlock || "(none indexed)"}\n\nUser request:\n${prompt}\n\nRules:\n- You have FULL AWARENESS of the project above. Reference real files by path. NEVER duplicate something that already exists - MODIFY it.\n- Interpret short, typo-heavy, or broad requests by using the SMART BUILD ROUTER above. Preserve the latest user request exactly, then infer practical Roblox defaults.
 - Use PROJECT MEMORY for durable preferences, naming, genre, and recent context. If memory conflicts with live files or the user's latest request, obey the latest request and live project state.
 - Organize new files into clean subfolders by feature (e.g. ServerScriptService/Combat/HitService, ReplicatedStorage/Modules/Config, StarterPlayerScripts/UI/Hud). Do NOT dump everything at the root of a service.\n- Place server Scripts in ServerScriptService, LocalScripts in StarterPlayerScripts or StarterGui, GUIs in StarterGui, RemoteEvents/RemoteFunctions in ReplicatedStorage/Remotes, ModuleScripts in ReplicatedStorage/Modules (shared) or ServerStorage/Modules (server-only), Tools in StarterPack, physical/world objects in Workspace.\n- For ground/landscape requests (grass, sand, snow, water, hills, islands), use real Roblox Terrain via the \`terrainFill\` action. NEVER spawn hundreds of thin Parts.\n- Do NOT claim success - phrase as "Queued for Studio...".\n- If the request is a casual question (no code changes), reply naturally in 'message' with empty 'files' and 'actions'.\n- Use tools (web_search, roblox_asset_*, fetch_url) ONLY when you genuinely need fresh info - every tool call slows you down.\n\nReturn the JSON object as specified.`;
       fullPrompt += replicaInstruction;
@@ -4234,6 +4240,11 @@ Build EVERYTHING. Ship the complete game.`;
       const slimTools: Record<string, any> = {};
       for (const k of TOOL_WHITELIST) if (allTools[k]) slimTools[k] = allTools[k];
 
+      // Vetted code exemplars for the systems this game needs, so each phase
+      // adapts proven server-authoritative patterns instead of reinventing them.
+      const { buildPatternLibraryBlock } = await import("./build-patterns");
+      const apPatternBlock = buildPatternLibraryBlock(description, { max: 5 });
+
       // A full game does NOT fit in one model response — 6 phases of complete
       // Luau blow past the output-token cap, so the later phases (UI, world)
       // get starved or truncated and the game ships thin. Build in TWO focused
@@ -4254,12 +4265,13 @@ Build EVERYTHING. Ship the complete game.`;
         const manifestBlock = manifest
           ? `\n\nALREADY BUILT (earlier phases — reference these EXACT paths; require/fire/parent into them, do NOT recreate them):\n${manifest}\n`
           : "";
+        const patternsBlock = apPatternBlock ? `\n\n${apPatternBlock}` : "";
         return generateTextWithToolFallback(
           generateText,
           {
             model,
             system: AUTOPILOT_SYSTEM,
-            prompt: `${liveBlock}\n\n${projectBlockAP}${manifestBlock}\n\nGAME DESCRIPTION:\n"""\n${description}\n"""\n\nBuild ON TOP of any existing files and the ALREADY BUILT list above. Emit ONLY these phases this pass: ${phaseFocus}. Return JSON {"summary","assumptions","phases":[...]} containing just those phases — every file body COMPLETE (no TODO, no "…", no truncation), every structural action included. ${manifest ? "Wire everything into the already-built structure (require those ModuleScripts, fire those RemoteEvents, parent into those folders)." : 'Include the default "everything" scope that belongs in these phases (spawn structure, leaderstats, DataStore persistence, economy, anti-exploit, admin stub).'} No markdown, no code fences — JSON only.`,
+            prompt: `${liveBlock}\n\n${projectBlockAP}${manifestBlock}${patternsBlock}\n\nGAME DESCRIPTION:\n"""\n${description}\n"""\n\nBuild ON TOP of any existing files and the ALREADY BUILT list above. Emit ONLY these phases this pass: ${phaseFocus}. Return JSON {"summary","assumptions","phases":[...]} containing just those phases — every file body COMPLETE (no TODO, no "…", no truncation), every structural action included. ${manifest ? "Wire everything into the already-built structure (require those ModuleScripts, fire those RemoteEvents, parent into those folders)." : 'Include the default "everything" scope that belongs in these phases (spawn structure, leaderstats, DataStore persistence, economy, anti-exploit, admin stub).'} No markdown, no code fences — JSON only.`,
             maxOutputTokens: segOutputTokens,
             maxRetries: 0,
             timeout: { totalMs: 42_000, stepMs: 42_000, chunkMs: 12_000 },

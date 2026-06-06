@@ -2,6 +2,11 @@
 
 ## Latest Updates
 
+### Smarter Creation — Vetted Build Patterns
+
+- Added a vetted Roblox build-pattern library (`src/lib/build-patterns.ts`): compact, complete, server-authoritative Luau exemplars for currency/leaderstats, DataStore persistence (pcall + UpdateAsync + BindToClose), validated RemoteEvents (type + cooldown + distance), server-authoritative shop purchases, mobile-friendly UI, server-validated weapon damage, a driveable VehicleSeat, and Animator-based animation. Every snippet is verified to pass the Luau syntax checker.
+- The builder (`generateWithAI`) and whole-game Autopilot now inject ONLY the patterns a request actually needs, so the AI adapts proven code (server authority, pcall DataStores, validated remotes, `Animator:LoadAnimation`, `task.*` instead of deprecated `wait`/`spawn`) instead of rewriting boilerplate from scratch. Requests that match no pattern (e.g. a recolor) inject nothing, so trivial edits stay lean.
+
 ### Self-Correcting Builds & Clear Viewer Mode
 
 - Builds now get one automatic correction pass on validator failures: when the pre-push sync check still blocks a script after auto-repair (broken Luau it couldn't fix, invalid placement, stub/placeholder text), BloxSmith re-prompts the model once with the exact errors, asks for corrected complete file bodies, then repairs + validates and merges the recovered files back in. Bounded to a single extra call, only on real build attempts, and never fatal — the first pass is kept if the retry doesn't help.
