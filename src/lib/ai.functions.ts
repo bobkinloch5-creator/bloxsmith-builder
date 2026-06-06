@@ -2521,6 +2521,95 @@ export const generateWithAI = createServerFn({ method: "POST" })
       repairs: repair.repairs,
     };
 
+    // 3b. Corrective retry on validation failures. If the model produced files
+    // but the sync check still BLOCKED some (broken Luau auto-repair couldn't
+    // fix, bad placement, stub text), re-prompt the SAME model ONCE with the
+    // exact errors and merge any now-valid replacements back in. This turns
+    // "silently dropped" into "fixed on the second try" without a full rebuild.
+    // Fully guarded: only on real build attempts (not template fallbacks), only
+    // when scripts were actually blocked, and never fatal if the retry fails.
+    const blockingFileErrors = validation.errors.filter(
+      (e) => e.scope === "file" || e.scope === "service" || e.scope === "security",
+    );
+    if (
+      !(result as any)._fallbackNoCharge &&
+      blockingFileErrors.length > 0 &&
+      (repair.files?.length ?? 0) > 0 &&
+      isBuildIntent(prompt)
+    ) {
+      try {
+        const blockedList = blockingFileErrors
+          .slice(0, 12)
+          .map((e) => `- ${e.target}: ${e.message}`)
+          .join("\n");
+        const correctionPrompt =
+          `Your previous build was mostly accepted, but these script files were REJECTED by the Studio sync validator and dropped:\n${blockedList}\n\n` +
+          `Return corrected, COMPLETE versions of ONLY those rejected files as strict JSON: {"files":[{"path","file_type","service_location","content"}],"actions":[]}. ` +
+          `Each "content" must be the full valid Luau body — balanced end / () {} [], real service paths, NO TODO/placeholder/stub text, no truncation, no markdown fences. Do not resend files that already passed. JSON only.`;
+        const { generateTextWithToolFallback: fixGen } = await import("./ai-retry.server");
+        const { text: fixText } = await fixGen(
+          generateText,
+          {
+            model,
+            system: SLIM_SYSTEM_PROMPT,
+            prompt: `${fullPrompt}\n\n${correctionPrompt}`,
+            maxOutputTokens: Math.min(profile.maxOutputTokens, 8000),
+            maxRetries: 0,
+            timeout: { totalMs: 35_000, stepMs: 35_000, chunkMs: 20_000 },
+          },
+          "generateWithAI:fix-validation",
+        );
+        const fixParsed = extractBuildJson(fixText) as any;
+        const fixedFiles = Array.isArray(fixParsed?.files) ? fixParsed.files : [];
+        if (fixedFiles.length > 0) {
+          const correctedRepair = autoRepairResult(
+            fixedFiles as any,
+            [],
+            existingForValidationRows,
+          );
+          const correctedValidation = validateGenerated(
+            correctedRepair.files as any,
+            [],
+            existingForValidationRows,
+          );
+          if (correctedValidation.files.length > 0) {
+            // Merge by path: keep already-valid files, add/replace with recovered ones.
+            const byPath = new Map<string, any>();
+            for (const f of result.files as any[]) byPath.set(f.path, f);
+            for (const f of correctedValidation.files as any[]) byPath.set(f.path, f);
+            const merged = Array.from(byPath.values());
+            const finalValidation = validateGenerated(
+              merged as any,
+              result.actions as any,
+              existingForValidationRows,
+            );
+            const recoveredCount = finalValidation.files.length - (result.files?.length ?? 0);
+            result.files = finalValidation.files as any;
+            result.actions = finalValidation.actions as any;
+            (result as any).validation = {
+              summary: finalValidation.summary,
+              errors: finalValidation.errors,
+              warnings: finalValidation.warnings,
+              repairs: [
+                ...repair.repairs,
+                ...correctedRepair.repairs,
+                `validation-retry recovered ${Math.max(0, recoveredCount)} file(s) the sync check had blocked`,
+              ],
+              retried: true,
+            };
+            console.log(
+              `[generateWithAI] validation-retry recovered ${Math.max(0, recoveredCount)} blocked file(s).`,
+            );
+          }
+        }
+      } catch (e) {
+        console.warn(
+          "[generateWithAI] validation-retry failed (keeping first pass):",
+          e instanceof Error ? e.message : e,
+        );
+      }
+    }
+
     // Build the would-be action queue (scripts derived from files + structural actions).
     const queued: GenAction[] = [];
     for (const f of result.files) {

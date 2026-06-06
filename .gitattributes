@@ -1,0 +1,14 @@
+# Normalize line endings so commits don't churn or warn about CRLF on Windows.
+# Text files are stored with LF in the repo; Git checks them out natively.
+* text=auto eol=lf
+
+# Explicitly treat common lockfiles/binaries correctly.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.lock text eol=lf

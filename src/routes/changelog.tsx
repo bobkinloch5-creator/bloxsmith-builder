@@ -48,6 +48,31 @@ const tagStyles = {
 
 export const changelogItems = [
   {
+    version: "v3.9.4",
+    date: "June 6, 2026",
+    title: "Self-Correcting Builds & Clear Viewer Mode",
+    description:
+      "Builds that hit a validator error now get one automatic correction pass instead of silently dropping the broken script, and view-only collaborators get a clear banner instead of a confusing failure.",
+    updates: [
+      {
+        category: "AI",
+        tagColor: tagStyles.ai,
+        icon: Wrench,
+        title: "Self-Correcting Builds",
+        detail:
+          "When the sync validator still blocks a script after auto-repair (broken Luau it couldn't fix, bad placement, stub text), BloxSmith now re-prompts the model once with the exact errors to get corrected, complete files and merges the recovered ones back in — turning 'silently dropped' into 'fixed on the second try' without a full rebuild.",
+      },
+      {
+        category: "Tools",
+        tagColor: tagStyles.tools,
+        icon: Users,
+        title: "Clear Viewer Mode",
+        detail:
+          "View-only collaborators now see a clear 'view-only access' banner in the composer and build-only tools are hidden for them, instead of clicking build and getting an error. Editors and owners are unaffected.",
+      },
+    ],
+  },
+  {
     version: "v3.9.3",
     date: "June 6, 2026",
     title: "Collaborators Can Build Together",

@@ -177,6 +177,11 @@ function ProjectEditor() {
   const nav = useNavigate();
   const [project, setProject] = useState<Project | null>(null);
   const [files, setFiles] = useState<ProjectFile[]>([]);
+  // Whether the current user may build/change this project (owner or "editor"
+  // collaborator). Viewers can open and chat but not build — the server already
+  // enforces this; this just drives a clear view-only banner. Defaults true so
+  // owners never flash a false banner before the role check resolves.
+  const [canEdit, setCanEdit] = useState(true);
 
   // Auto Execute State
   const [autoExecute, setAutoExecute] = useState(
@@ -810,6 +815,19 @@ function ProjectEditor() {
         .maybeSingle();
       if (!p) return toast.error("Project not found");
       setProject(p as Project);
+      // Resolve edit rights: owner always edits; a collaborator only if their
+      // role is "editor". Viewers get a read-only experience.
+      if ((p as any).user_id === user.id) {
+        setCanEdit(true);
+      } else {
+        const { data: myCollab } = await supabase
+          .from("project_collaborators")
+          .select("role")
+          .eq("project_id", projectId)
+          .eq("user_id", user.id)
+          .maybeSingle();
+        setCanEdit(myCollab?.role === "editor");
+      }
       const { data: f } = await supabase
         .from("project_files")
         .select("*")
@@ -3083,7 +3101,13 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                     again at {aiUsageResetLabel}.
                   </div>
                 )}
-                {!chatMode && (
+                {!canEdit && (
+                  <div className="mb-2 rounded-lg border border-sky-400/40 bg-sky-500/10 px-3 py-2 text-xs text-sky-100">
+                    👁️ View-only access — you can browse this project and ask the AI questions, but
+                    building and edits are disabled. Ask the project owner to make you an editor.
+                  </div>
+                )}
+                {!chatMode && canEdit && (
                   <div className="mb-2 rounded-lg border border-border/50 bg-surface/35 px-2 py-1.5 sm:px-2.5 sm:py-2">
                     <button
                       type="button"

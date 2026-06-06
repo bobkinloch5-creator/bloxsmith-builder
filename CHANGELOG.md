@@ -2,6 +2,12 @@
 
 ## Latest Updates
 
+### Self-Correcting Builds & Clear Viewer Mode
+
+- Builds now get one automatic correction pass on validator failures: when the pre-push sync check still blocks a script after auto-repair (broken Luau it couldn't fix, invalid placement, stub/placeholder text), BloxSmith re-prompts the model once with the exact errors, asks for corrected complete file bodies, then repairs + validates and merges the recovered files back in. Bounded to a single extra call, only on real build attempts, and never fatal — the first pass is kept if the retry doesn't help.
+- View-only collaborators now get a clear "view-only access" banner in the project composer and build-only tools (Auto-Arrange) are hidden for them, instead of clicking build and hitting a server error. Editors and owners are unaffected. The current user's role is resolved on project load.
+- Added `.gitattributes` to normalize line endings (LF in the repo), removing the CRLF warnings on every commit.
+
 ### Collaborators Can Build Together
 
 - Invited collaborators can now actually work on a shared project. The AI build pipeline (generate, fix, Autopilot, apply, plan, queue-to-Studio) plus project AI memory and AI settings now recognize collaborators, not just the project owner — previously every collaborator hit "Project not found or unauthorized" the moment they tried to build.
