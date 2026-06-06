@@ -4243,7 +4243,7 @@ Build EVERYTHING. Ship the complete game.`;
       // Vetted code exemplars for the systems this game needs, so each phase
       // adapts proven server-authoritative patterns instead of reinventing them.
       const { buildPatternLibraryBlock } = await import("./build-patterns");
-      const apPatternBlock = buildPatternLibraryBlock(description, { max: 5 });
+      const apPatternBlock = buildPatternLibraryBlock(description, { max: 6 });
 
       // A full game does NOT fit in one model response — 6 phases of complete
       // Luau blow past the output-token cap, so the later phases (UI, world)

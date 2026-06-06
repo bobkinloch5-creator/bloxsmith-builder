@@ -32,7 +32,7 @@ export const BUILD_PATTERNS: BuildPattern[] = [
     id: "currency_leaderstats",
     label: "Server-authoritative currency + leaderstats (ModuleScript)",
     match:
-      /\b(coin|cash|money|gem|gold|credit|currency|leaderstat|score|points?|economy|shop|buy|sell|reward|simulator|tycoon|rebirth)\b/i,
+      /\b(coins?|cash|money|gems?|gold|credits?|currency|leaderstats?|score|points?|economy|shop|buy|sell|rewards?|simulator|tycoon|rebirths?)\b/i,
     code: `-- ReplicatedStorage/Modules/CurrencyService (ModuleScript)
 local Players = game:GetService("Players")
 
@@ -65,7 +65,7 @@ return CurrencyService`,
     id: "datastore_persistence",
     label: "DataStore persistence (pcall + UpdateAsync + BindToClose) (Script)",
     match:
-      /\b(save|load|datastore|data store|persist|progress|inventory|stats? save|leaderboard|profile|autosave)\b/i,
+      /\b(saves?|saving|saved|load|datastore|data store|persist|progress|inventory|stats? save|leaderboard|profile|autosave)\b/i,
     code: `-- ServerScriptService/Data/DataService (Script)
 local Players = game:GetService("Players")
 local DataStoreService = game:GetService("DataStoreService")
@@ -137,7 +137,7 @@ end)`,
   {
     id: "shop_purchase",
     label: "Server-authoritative shop purchase (RemoteFunction) (Script)",
-    match: /\b(shop|store|buy|purchase|sell|upgrade|gamepass|market|vendor|catalog)\b/i,
+    match: /\b(shop|store|buy|purchase|sell|upgrades?|gamepass|market|vendor|catalog)\b/i,
     code: `-- ServerScriptService/Shop/ShopService (Script)
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local buy = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Buy")
@@ -159,6 +159,250 @@ buy.OnServerInvoke = function(player, itemId)
 	-- grant the item server-side here (clone tool into Backpack, set flag, etc.)
 	return true, item.grant
 end`,
+  },
+  {
+    id: "tycoon_dropper",
+    label: "Tycoon dropper + collector (server-credited) (Script)",
+    match: /\b(tycoon|dropper|conveyor|collector|plot|purchase pad|base generator)\b/i,
+    code: `-- ServerScriptService/Tycoon/DropperService (Script)
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+
+local CASH_PER_DROP = 5
+local DROP_INTERVAL = 1
+
+-- collector must have an "OwnerUserId" attribute set when a player claims the plot.
+local function startDropper(dropper, collector)
+	task.spawn(function()
+		while dropper.Parent and collector.Parent do
+			local cash = Instance.new("Part")
+			cash.Size = Vector3.new(1, 1, 1)
+			cash.Color = Color3.fromRGB(85, 255, 127)
+			cash.Position = dropper.Position - Vector3.new(0, 2, 0)
+			cash:SetAttribute("Value", CASH_PER_DROP)
+			cash.Parent = Workspace
+			cash.Touched:Connect(function(hit)
+				if hit ~= collector then return end
+				local userId = collector:GetAttribute("OwnerUserId")
+				local owner = userId and Players:GetPlayerByUserId(userId)
+				local coins = owner and owner:FindFirstChild("leaderstats")
+					and owner.leaderstats:FindFirstChild("Coins")
+				if coins then
+					coins.Value += cash:GetAttribute("Value") or 0
+				end
+				cash:Destroy()
+			end)
+			task.wait(DROP_INTERVAL)
+		end
+	end)
+end
+
+return startDropper`,
+  },
+  {
+    id: "npc_quest",
+    label: "NPC dialogue + quest with server-validated reward (Script)",
+    match:
+      /\b(npcs?|quests?|dialogue|dialog|missions?|objectives?|talk|villagers?|merchants?|quest ?giver|story)\b/i,
+    code: `-- ServerScriptService/NPC/QuestGiver (Script)
+local Players = game:GetService("Players")
+local npc = script.Parent
+local prompt = npc:FindFirstChildWhichIsA("ProximityPrompt", true)
+
+local progress = {} -- [userId] = "none" | "active" | "done"
+
+if prompt then
+	prompt.Triggered:Connect(function(player)
+		local state = progress[player.UserId] or "none"
+		if state == "none" then
+			progress[player.UserId] = "active"
+			-- fire a dialogue RemoteEvent to the client here to show the offer
+		elseif state == "active" then
+			local kills = player:GetAttribute("Kills") or 0
+			if kills >= 5 then
+				progress[player.UserId] = "done"
+				local coins = player:FindFirstChild("leaderstats")
+					and player.leaderstats:FindFirstChild("Coins")
+				if coins then
+					coins.Value += 100
+				end
+			end
+		end
+	end)
+end`,
+  },
+  {
+    id: "gamepass_receipt",
+    label: "Secure monetization (ProcessReceipt + dedupe) (Script)",
+    match:
+      /\b(gamepass|game ?pass|developer product|dev product|robux|monetiz|microtransaction|processreceipt|purchase|products?|donation)\b/i,
+    code: `-- ServerScriptService/Monetization/Purchases (Script)
+local MarketplaceService = game:GetService("MarketplaceService")
+local Players = game:GetService("Players")
+
+-- Map each Developer Product id to a server-side grant. Replace the ids.
+local PRODUCTS = {
+	[123456] = function(player)
+		local coins = player:FindFirstChild("leaderstats")
+			and player.leaderstats:FindFirstChild("Coins")
+		if coins then
+			coins.Value += 1000
+		end
+	end,
+}
+
+local granted = {} -- per-receipt dedupe so a retry never double-grants
+
+MarketplaceService.ProcessReceipt = function(receipt)
+	local key = receipt.PlayerId .. "_" .. receipt.PurchaseId
+	if granted[key] then
+		return Enum.ProductPurchaseDecision.PurchaseGranted
+	end
+	local player = Players:GetPlayerByUserId(receipt.PlayerId)
+	if not player then
+		return Enum.ProductPurchaseDecision.NotProcessedYet
+	end
+	local handler = PRODUCTS[receipt.ProductId]
+	if not handler then
+		return Enum.ProductPurchaseDecision.NotProcessedYet
+	end
+	local ok = pcall(handler, player)
+	if not ok then
+		return Enum.ProductPurchaseDecision.NotProcessedYet
+	end
+	granted[key] = true
+	return Enum.ProductPurchaseDecision.PurchaseGranted
+end`,
+  },
+  {
+    id: "round_manager",
+    label: "Round/minigame loop (intermission → round → winner) (Script)",
+    match:
+      /\b(rounds?|minigames?|mini-games?|intermission|match(?:es)?|deathmatch|free.?for.?all|ffa|lobby hub|elimination)\b/i,
+    code: `-- ServerScriptService/Rounds/RoundService (Script)
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local status = Instance.new("StringValue")
+status.Name = "RoundStatus"
+status.Value = "Intermission"
+status.Parent = ReplicatedStorage
+
+local INTERMISSION = 10
+local ROUND_TIME = 60
+
+task.spawn(function()
+	while true do
+		status.Value = "Intermission"
+		task.wait(INTERMISSION)
+		if #Players:GetPlayers() < 1 then
+			task.wait(1)
+		else
+			status.Value = "InRound"
+			-- teleport players into the arena + enable combat here
+			task.wait(ROUND_TIME)
+			status.Value = "Ended"
+			-- award the winner server-side here
+			task.wait(3)
+		end
+	end
+end)`,
+  },
+  {
+    id: "daily_reward",
+    label: "Daily reward (timestamp cooldown, server-checked) (ModuleScript)",
+    match: /\b(daily|login bonus|streak|claim reward|daily reward)\b/i,
+    code: `-- ReplicatedStorage/Modules/DailyReward (ModuleScript)
+local DailyReward = {}
+local DAY = 24 * 60 * 60
+
+-- Call from a validated RemoteFunction; persist LastDailyClaim with your DataService.
+function DailyReward.claim(player)
+	local last = player:GetAttribute("LastDailyClaim") or 0
+	local now = os.time()
+	if now - last < DAY then
+		return false, "Already claimed today"
+	end
+	player:SetAttribute("LastDailyClaim", now)
+	local coins = player:FindFirstChild("leaderstats")
+		and player.leaderstats:FindFirstChild("Coins")
+	if coins then
+		coins.Value += 250
+	end
+	return true, "Claimed 250 Coins"
+end
+
+return DailyReward`,
+  },
+  {
+    id: "pet_hatch",
+    label: "Pet/egg hatch (server-side weighted roll) (ModuleScript)",
+    match: /\b(pets?|eggs?|hatch|gacha|rarity|loot ?box(?:es)?|crates?|spin|wheel)\b/i,
+    code: `-- ReplicatedStorage/Modules/EggService (ModuleScript)
+local EggService = {}
+
+-- Weighted rarities; weights need not sum to 100.
+local POOL = {
+	{ name = "Common Pup", weight = 70 },
+	{ name = "Rare Cat", weight = 25 },
+	{ name = "Legendary Dragon", weight = 5 },
+}
+
+-- Roll on the SERVER so the client can't spoof rarity.
+function EggService.roll()
+	local total = 0
+	for _, p in ipairs(POOL) do
+		total += p.weight
+	end
+	local pick = math.random() * total
+	local acc = 0
+	for _, p in ipairs(POOL) do
+		acc += p.weight
+		if pick <= acc then
+			return p.name
+		end
+	end
+	return POOL[1].name
+end
+
+return EggService`,
+  },
+  {
+    id: "obby_checkpoint",
+    label: "Obby checkpoints + respawn at stage (Script)",
+    match: /\b(obby|checkpoints?|stages?|parkour|kill ?bricks?|courses?|platformer)\b/i,
+    code: `-- ServerScriptService/Obby/CheckpointService (Script)
+local Players = game:GetService("Players")
+local checkpoints = workspace:WaitForChild("Checkpoints")
+
+-- Each checkpoint part is named by its stage number ("1", "2", ...).
+local function wire(pad)
+	pad.Touched:Connect(function(hit)
+		local player = Players:GetPlayerFromCharacter(hit.Parent)
+		if not player then return end
+		local stage = tonumber(pad.Name) or 0
+		if stage > (player:GetAttribute("Stage") or 0) then
+			player:SetAttribute("Stage", stage)
+		end
+	end)
+end
+
+for _, pad in ipairs(checkpoints:GetChildren()) do
+	if pad:IsA("BasePart") then
+		wire(pad)
+	end
+end
+
+Players.PlayerAdded:Connect(function(player)
+	player.CharacterAdded:Connect(function(char)
+		local stage = player:GetAttribute("Stage") or 0
+		local pad = checkpoints:FindFirstChild(tostring(stage))
+		if pad then
+			local root = char:WaitForChild("HumanoidRootPart")
+			root.CFrame = pad.CFrame + Vector3.new(0, 3, 0)
+		end
+	end)
+end)`,
   },
   {
     id: "mobile_ui",
@@ -204,7 +448,7 @@ end)`,
     id: "tool_damage",
     label: "Server-validated tool/weapon damage (Tool + Script)",
     match:
-      /\b(weapon|sword|gun|melee|tool|attack|damage|combat|fight|pvp|hit|slash|swing|shoot|blaster|knife)\b/i,
+      /\b(weapons?|swords?|guns?|melee|tools?|attack|damage|combat|fight|pvp|hit|slash|swing|shoot|blaster|knife|knives)\b/i,
     code: `-- ServerScriptService/Combat/SwordService (Script)
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local swing = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Swing")
@@ -232,7 +476,7 @@ end)`,
   {
     id: "vehicle_seat",
     label: "Driveable vehicle (VehicleSeat) (Script)",
-    match: /\b(vehicle|car|truck|kart|bike|motorcycle|boat|drive|driving|racing|race)\b/i,
+    match: /\b(vehicles?|cars?|trucks?|karts?|bikes?|motorcycles?|boats?|drive|driving|racing|race)\b/i,
     code: `-- Workspace/Vehicles/Car/Drive (Script, parented under the VehicleSeat's model)
 local seat = script.Parent:FindFirstChildWhichIsA("VehicleSeat")
 
@@ -284,7 +528,7 @@ player.CharacterAdded:Connect(play)`,
  * matches (e.g. a tiny recolor edit) so trivial requests stay lean.
  */
 export function buildPatternLibraryBlock(prompt: string, opts?: { max?: number }): string {
-  const max = opts?.max ?? 4;
+  const max = opts?.max ?? 6;
   const matched = BUILD_PATTERNS.filter((p) => p.match.test(prompt)).slice(0, max);
   if (matched.length === 0) return "";
 

@@ -48,6 +48,31 @@ const tagStyles = {
 
 export const changelogItems = [
   {
+    version: "v3.9.6",
+    date: "June 6, 2026",
+    title: "More Genre Build Patterns + Verified in Studio",
+    description:
+      "The vetted build-pattern library now covers the big game genres — tycoon, monetization, quests, rounds, daily rewards, pets, and obbies — and the animation + core build pipeline was verified live in Roblox Studio.",
+    updates: [
+      {
+        category: "AI",
+        tagColor: tagStyles.ai,
+        icon: Library,
+        title: "Genre Patterns",
+        detail:
+          "Added vetted, server-authoritative Luau exemplars for tycoon droppers/collectors, secure monetization (ProcessReceipt + dedupe), NPC quests, round/minigame loops, daily rewards, server-side pet/egg hatching, and obby checkpoints with respawn — 15 patterns total. The builder injects only the ones each request needs, with smarter keyword matching (plurals like coins/saves/pets now route correctly).",
+      },
+      {
+        category: "AI",
+        tagColor: tagStyles.ai,
+        icon: CheckCircle,
+        title: "Verified Live in Studio",
+        detail:
+          "Animations were confirmed working end-to-end in a real Studio (Animation + AnimationId + Animator:LoadAnimation loaded a 3.75s asset and played), along with parts, RemoteEvents, the server-authoritative currency clamp, TweenService, and DataStore/Marketplace/Pathfinding service resolution.",
+      },
+    ],
+  },
+  {
     version: "v3.9.5",
     date: "June 6, 2026",
     title: "Smarter Creation — Vetted Build Patterns",
