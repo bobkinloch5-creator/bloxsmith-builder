@@ -2459,16 +2459,33 @@ export const generateWithAI = createServerFn({ method: "POST" })
       }
     }
 
-    // 3. Pre-push sync validation — drop files/actions that would error in Studio.
-    const { validateGenerated } = await import("./sync-validation");
+    // 3. Pre-push auto-repair + sync validation. Repair FIRST so fixable Luau
+    // (missing `end`s/brackets), misplaced scripts, missing parent folders, and
+    // casing get healed instead of dropped — then validate what remains. Without
+    // this, a script that only needed one trailing `end` was silently discarded.
+    const { validateGenerated, autoRepairResult } = await import("./sync-validation");
     const { data: existingForValidation } = await supabase
       .from("project_files")
       .select("path")
       .eq("project_id", projectId);
+    const existingForValidationRows = (existingForValidation ?? []) as any;
+    const repair = autoRepairResult(
+      result.files as any,
+      result.actions as any,
+      existingForValidationRows,
+    );
+    if (repair.repairs.length > 0) {
+      console.log(
+        `[generateWithAI] auto-repair applied ${repair.repairs.length} fix(es):`,
+        repair.repairs,
+      );
+      result.files = repair.files as any;
+      result.actions = repair.actions as any;
+    }
     const validation = validateGenerated(
       result.files as any,
       result.actions as any,
-      (existingForValidation ?? []) as any,
+      existingForValidationRows,
     );
     result.files = validation.files as any;
     result.actions = validation.actions as any;
@@ -2476,6 +2493,7 @@ export const generateWithAI = createServerFn({ method: "POST" })
       summary: validation.summary,
       errors: validation.errors,
       warnings: validation.warnings,
+      repairs: repair.repairs,
     };
 
     // Build the would-be action queue (scripts derived from files + structural actions).
@@ -3741,16 +3759,31 @@ Respond ONLY with the JSON object specified.`;
       throw new Error("AI fix failed: " + msg);
     }
 
-    // Pre-push sync validation
-    const { validateGenerated } = await import("./sync-validation");
+    // Pre-push auto-repair + sync validation. Repair FIRST so fixable Luau and
+    // misplaced/missing instances get healed before the validator drops them.
+    const { validateGenerated, autoRepairResult } = await import("./sync-validation");
     const { data: existingForValidation } = await supabase
       .from("project_files")
       .select("path")
       .eq("project_id", projectId);
+    const existingForValidationRows = (existingForValidation ?? []) as any;
+    const repair = autoRepairResult(
+      result.files as any,
+      result.actions as any,
+      existingForValidationRows,
+    );
+    if (repair.repairs.length > 0) {
+      console.log(
+        `[fixErrorsWithAI] auto-repair applied ${repair.repairs.length} fix(es):`,
+        repair.repairs,
+      );
+      result.files = repair.files as any;
+      result.actions = repair.actions as any;
+    }
     const validation = validateGenerated(
       result.files as any,
       result.actions as any,
-      (existingForValidation ?? []) as any,
+      existingForValidationRows,
     );
     result.files = validation.files as any;
     result.actions = validation.actions as any;
@@ -3758,6 +3791,7 @@ Respond ONLY with the JSON object specified.`;
       summary: validation.summary,
       errors: validation.errors,
       warnings: validation.warnings,
+      repairs: repair.repairs,
     };
 
     // Persist patches into project_files
@@ -4041,7 +4075,38 @@ Build EVERYTHING. Ship the complete game.`;
       files: GenFile[];
       actions: GenAction[];
     };
+    type Segment = { summary?: string; assumptions?: string[]; phases?: Phase[] };
     let plan: { summary: string; assumptions: string[]; phases: Phase[] };
+
+    // Compact manifest of everything a finished segment created, so the next
+    // segment can require those ModuleScripts / fire those RemoteEvents at their
+    // EXACT paths instead of recreating or guessing them.
+    const buildManifest = (phases: Phase[]): string => {
+      const lines: string[] = [];
+      for (const ph of phases ?? []) {
+        for (const f of ph.files ?? []) {
+          if (f?.path) lines.push(`${f.path} [${f.file_type ?? "Script"}]`);
+        }
+        for (const a of ph.actions ?? []) {
+          if (!a || typeof a !== "object") continue;
+          const parent = a.parent ? `${String(a.parent).replace(/\./g, "/")}/` : "";
+          if ((a.type === "create" || a.type === "folder") && a.name) {
+            lines.push(`${parent}${a.name}${a.className ? ` (${a.className})` : ""}`);
+          } else if (a.type === "script" && a.name) {
+            lines.push(`${parent}${a.name} (${a.className ?? "Script"})`);
+          }
+        }
+      }
+      const seen = new Set<string>();
+      const out: string[] = [];
+      for (const l of lines) {
+        if (seen.has(l)) continue;
+        seen.add(l);
+        out.push(l);
+        if (out.length >= 140) break;
+      }
+      return out.join("\n");
+    };
 
     try {
       const { generateTextWithToolFallback } = await import("./ai-retry.server");
@@ -4053,39 +4118,113 @@ Build EVERYTHING. Ship the complete game.`;
       const slimTools: Record<string, any> = {};
       for (const k of TOOL_WHITELIST) if (allTools[k]) slimTools[k] = allTools[k];
 
-      const runOnce = (useTools: boolean) =>
-        generateTextWithToolFallback(
+      // A full game does NOT fit in one model response — 6 phases of complete
+      // Luau blow past the output-token cap, so the later phases (UI, world)
+      // get starved or truncated and the game ships thin. Build in TWO focused
+      // passes instead: the backbone (structure + shared modules + server
+      // systems) first, then the frontend + world (client controllers + UI +
+      // map) seeded with a manifest of everything the backbone created. Each
+      // pass gets the FULL output budget, so each phase is actually complete.
+      // Two passes stay within the same wall-time the single-call-with-tools-
+      // fallback path already used.
+      const segOutputTokens = profile.maxOutputTokens;
+
+      const runSegment = (
+        label: string,
+        phaseFocus: string,
+        manifest: string,
+        useTools: boolean,
+      ) => {
+        const manifestBlock = manifest
+          ? `\n\nALREADY BUILT (earlier phases — reference these EXACT paths; require/fire/parent into them, do NOT recreate them):\n${manifest}\n`
+          : "";
+        return generateTextWithToolFallback(
           generateText,
           {
             model,
             system: AUTOPILOT_SYSTEM,
-            prompt: `${liveBlock}\n\n${projectBlockAP}\n\nGAME DESCRIPTION:\n"""\n${description}\n"""\n\nBuild ON TOP of any existing files listed above. Ship the COMPLETE game — every phase, every file body complete, every structural action. Include the default "everything" scope (spawn area, leaderstats, DataStore, shop, HUD, main menu, settings, music, day/night, anti-exploit, admin stub) plus everything the user described. No markdown, no code fences — JSON only.`,
-            maxOutputTokens: Math.min(profile.maxOutputTokens, 14000),
+            prompt: `${liveBlock}\n\n${projectBlockAP}${manifestBlock}\n\nGAME DESCRIPTION:\n"""\n${description}\n"""\n\nBuild ON TOP of any existing files and the ALREADY BUILT list above. Emit ONLY these phases this pass: ${phaseFocus}. Return JSON {"summary","assumptions","phases":[...]} containing just those phases — every file body COMPLETE (no TODO, no "…", no truncation), every structural action included. ${manifest ? "Wire everything into the already-built structure (require those ModuleScripts, fire those RemoteEvents, parent into those folders)." : 'Include the default "everything" scope that belongs in these phases (spawn structure, leaderstats, DataStore persistence, economy, anti-exploit, admin stub).'} No markdown, no code fences — JSON only.`,
+            maxOutputTokens: segOutputTokens,
             maxRetries: 0,
             timeout: { totalMs: 42_000, stepMs: 42_000, chunkMs: 12_000 },
             ...(useTools ? { tools: slimTools, stopWhen: stepCountIs(12) } : {}),
           },
-          useTools ? "autopilotBuild" : "autopilotBuild-notools",
+          useTools ? `autopilot-${label}` : `autopilot-${label}-notools`,
         );
+      };
 
-      let rawText = "";
-      try {
-        ({ text: rawText } = await runOnce(true));
-      } catch (e: any) {
-        const m = String(e?.message ?? e);
-        // If request is too big OR rate-limited on tools call, retry once
-        // with NO tools (saves ~1-3k tokens of tool definitions).
-        if (/too large|context|413|429|tokens per minute|rate limit/i.test(m)) {
-          console.warn("[autopilot] retrying without tools:", m.slice(0, 200));
-          ({ text: rawText } = await runOnce(false));
-        } else {
-          throw e;
+      const runSegmentParsed = async (
+        label: string,
+        phaseFocus: string,
+        manifest: string,
+      ): Promise<Segment | null> => {
+        let rawText = "";
+        try {
+          ({ text: rawText } = await runSegment(label, phaseFocus, manifest, true));
+        } catch (e: any) {
+          const m = String(e?.message ?? e);
+          // Too big / rate-limited on the tools call → retry once with NO tools
+          // (saves ~1-3k tokens of tool definitions).
+          if (/too large|context|413|429|tokens per minute|rate limit/i.test(m)) {
+            console.warn(`[autopilot:${label}] retrying without tools:`, m.slice(0, 200));
+            ({ text: rawText } = await runSegment(label, phaseFocus, manifest, false));
+          } else {
+            throw e;
+          }
         }
+        return extractBuildJson(rawText) as Segment | null;
+      };
+
+      // Pass 1 — backbone. This is the hard part of the game and MUST succeed;
+      // a failure here refunds the run (handled by the outer catch below).
+      const backbone = await runSegmentParsed(
+        "backbone",
+        "Phase 1 — Structure, Phase 2 — Shared Modules, Phase 3 — Server Systems",
+        "",
+      );
+      if (!backbone || !Array.isArray(backbone.phases) || backbone.phases.length === 0) {
+        throw new Error("AI did not return valid JSON.");
       }
 
-      const autoParsed = extractBuildJson(rawText);
-      if (!autoParsed) throw new Error("AI did not return valid JSON.");
-      plan = autoParsed as typeof plan;
+      // Pass 2 — frontend + world. Best-effort: if it fails or truncates, the
+      // backbone still ships and we note the unfinished pass in assumptions so
+      // the user can finish it with a follow-up build / Autopilot run.
+      let frontendPhases: Phase[] = [];
+      let frontendSummary = "";
+      let frontendAssumptions: string[] = [];
+      try {
+        const frontend = await runSegmentParsed(
+          "frontend",
+          "Phase 4 — Client Controllers, Phase 5 — UI, Phase 6 — World",
+          buildManifest(backbone.phases),
+        );
+        if (frontend && Array.isArray(frontend.phases)) {
+          frontendPhases = frontend.phases;
+          frontendSummary = frontend.summary ?? "";
+          frontendAssumptions = frontend.assumptions ?? [];
+        }
+      } catch (e: any) {
+        console.warn(
+          "[autopilot:frontend] pass failed, shipping backbone only:",
+          String(e?.message ?? e).slice(0, 200),
+        );
+      }
+
+      plan = {
+        summary:
+          [backbone.summary, frontendSummary].filter(Boolean).join(" ") ||
+          "Autopilot build queued.",
+        assumptions: [
+          ...(backbone.assumptions ?? []),
+          ...frontendAssumptions,
+          ...(frontendPhases.length === 0
+            ? [
+                "The UI/world pass didn't complete this run — the server backbone is in. Re-run Autopilot or send a build prompt to add the menus, HUD, and map.",
+              ]
+            : []),
+        ],
+        phases: [...backbone.phases, ...frontendPhases],
+      };
     } catch (err: any) {
       if (!isOwner)
         await supabase.rpc("refund_credits", { _amount: cost, _reason: "autopilot failed" });
@@ -4098,9 +4237,10 @@ Build EVERYTHING. Ship the complete game.`;
       throw new Error("Autopilot failed: " + msg);
     }
 
-    // Pre-push sync validation per phase. Drops files/actions that would
-    // error in Studio and collects issues into a single report.
-    const { validateGenerated } = await import("./sync-validation");
+    // Pre-push auto-repair + sync validation per phase. Repair FIRST so fixable
+    // Luau and misplaced/missing instances get healed before the validator
+    // drops them, then collect issues into a single report.
+    const { validateGenerated, autoRepairResult } = await import("./sync-validation");
     const { data: existingForValidation } = await supabase
       .from("project_files")
       .select("path")
@@ -4109,7 +4249,18 @@ Build EVERYTHING. Ship the complete game.`;
     const phaseValidations: any[] = [];
     let allErrors = 0;
     let allWarnings = 0;
+    let allRepairs = 0;
     for (const phase of plan.phases) {
+      const repair = autoRepairResult(phase.files as any, phase.actions as any, knownPaths);
+      if (repair.repairs.length > 0) {
+        console.log(
+          `[autopilotBuild] phase "${phase.title}" auto-repair applied ${repair.repairs.length} fix(es):`,
+          repair.repairs,
+        );
+        phase.files = repair.files as any;
+        phase.actions = repair.actions as any;
+        allRepairs += repair.repairs.length;
+      }
       const v = validateGenerated(phase.files as any, phase.actions as any, knownPaths);
       phase.files = v.files as any;
       phase.actions = v.actions as any;
@@ -4119,6 +4270,7 @@ Build EVERYTHING. Ship the complete game.`;
         summary: v.summary,
         errors: v.errors,
         warnings: v.warnings,
+        repairs: repair.repairs,
       });
       allErrors += v.errors.length;
       allWarnings += v.warnings.length;
@@ -4229,6 +4381,7 @@ Build EVERYTHING. Ship the complete game.`;
       validation: {
         errors: allErrors,
         warnings: allWarnings,
+        repairs: allRepairs,
         phases: phaseValidations,
       },
     };

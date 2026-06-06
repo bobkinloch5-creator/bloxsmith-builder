@@ -168,26 +168,6 @@ type AiMemory = {
 };
 type Msg = { id: string; role: "user" | "assistant"; content: string; actions?: any };
 
-const MAP_STRATEGY_OPTIONS: Array<{
-  id: MapGenerationStrategy;
-  label: string;
-  shortLabel: string;
-  title: string;
-}> = [
-  {
-    id: "toolbox",
-    label: "Toolbox Map",
-    shortLabel: "Toolbox",
-    title: "Use safe free Roblox Toolbox map assets first",
-  },
-  {
-    id: "custom",
-    label: "AI Custom Map",
-    shortLabel: "Custom",
-    title: "Build an original map from terrain, parts, lighting, and scripts",
-  },
-];
-
 function ProjectEditor() {
   const { projectId } = Route.useParams();
   const { user, session, loading, isOwner, profile } = useAuth();
@@ -515,24 +495,9 @@ function ProjectEditor() {
   const GENERATE_COST = 3;
   const outOfCredits = !isOwner && credits !== null && credits < GENERATE_COST;
   const [aiMode, setAiMode] = useState<string>("build");
-  // null = auto / no preference — neither button highlighted, AI picks the best
-  // approach on its own. Clicking an active button again clears back to auto.
-  const [mapStrategy, setMapStrategy] = useState<MapGenerationStrategy | null>(() => {
-    if (typeof window === "undefined") return null;
-    const stored = localStorage.getItem("bs_map_strategy");
-    return stored === "custom" ? "custom" : stored === "toolbox" ? "toolbox" : null;
-  });
-  const selectMapStrategy = (next: MapGenerationStrategy) => {
-    setMapStrategy((current) => {
-      const resolved = current === next ? null : next;
-      if (resolved === null) {
-        localStorage.removeItem("bs_map_strategy");
-      } else {
-        localStorage.setItem("bs_map_strategy", resolved);
-      }
-      return resolved;
-    });
-  };
+  // Map mode is always Auto now (the AI picks Toolbox vs custom per request).
+  // Kept as a constant so the build call below can still pass it when set.
+  const mapStrategy: MapGenerationStrategy | null = null;
   const runAI = useServerFn(generateWithAI);
   const runFixErrors = useServerFn(fixErrorsWithAI);
   const runAutopilot = useServerFn(autopilotBuild);
@@ -1682,45 +1647,6 @@ function ProjectEditor() {
     if (aiBusy) {
       setMsgQueue((prev) => [...prev, queued]);
       toast.message("Queued — will send when the current reply finishes.");
-      return;
-    }
-    await runQueuedMessage(queued);
-  };
-
-  // One-click full-map build: sends a strong map-generation prompt through the
-  // normal AI build pipeline (Toolbox/custom assets, auto-placed by the plugin)
-  // using the selected Map mode. Any text already in the composer is used as the
-  // map's theme. This reuses the real build flow — no separate or fake path.
-  const generateFullMap = async () => {
-    if (aiUsageBlocked) {
-      toast.error(`Daily AI timer used up. Try again at ${aiUsageResetLabel}.`);
-      return;
-    }
-    const theme = prompt.trim();
-    const mapPrompt =
-      `Generate a COMPLETE, polished, playable Roblox map${theme ? ` for: ${theme}` : ""}. ` +
-      "Build a real game-ready environment, not an empty baseplate: ground/terrain, a clear " +
-      "SpawnLocation, a road or path layout, multiple distinct buildings, props, nature and " +
-      "decorations, themed lighting/atmosphere, and organized folders (Workspace/Map with " +
-      "Roads, Buildings, Props, Nature, plus Workspace/NPCs and Workspace/Interactables where " +
-      "useful). Fill it with varied assets following the selected Map mode, ground and space " +
-      "everything so nothing floats or overlaps, add the SpawnLocation, and finish with a " +
-      "playtest_ready check. Make it look intentional and fun to walk around.";
-    const queued: QueuedMsg = {
-      id:
-        typeof crypto !== "undefined" && "randomUUID" in crypto
-          ? crypto.randomUUID()
-          : `q-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      prompt: mapPrompt,
-      attachments: [],
-      chatMode: false,
-      planMode: false,
-      webSearch,
-    };
-    setPrompt("");
-    if (aiBusy) {
-      setMsgQueue((prev) => [...prev, queued]);
-      toast.message("Queued — your map will build after the current reply.");
       return;
     }
     await runQueuedMessage(queued);
@@ -3156,56 +3082,13 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                   </div>
                 )}
                 {!chatMode && (
-                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/50 bg-surface/35 px-2 py-1.5 sm:px-2.5 sm:py-2">
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        Map mode
-                      </div>
-                      <div className="hidden sm:block text-[11px] leading-snug text-muted-foreground/80">
-                        {mapStrategy === "toolbox"
-                          ? "Find safe free Toolbox maps first"
-                          : mapStrategy === "custom"
-                            ? "Build original maps from terrain and parts"
-                            : "Auto — let the AI choose the best map approach"}
-                      </div>
-                    </div>
-                    <div className="inline-flex rounded-lg border border-border/60 bg-background/45 p-0.5">
-                      {MAP_STRATEGY_OPTIONS.map((option) => (
-                        <button
-                          key={option.id}
-                          type="button"
-                          onClick={() => selectMapStrategy(option.id)}
-                          title={
-                            mapStrategy === option.id
-                              ? `${option.title} (click again to turn off)`
-                              : option.title
-                          }
-                          aria-pressed={mapStrategy === option.id}
-                          className={`h-7 rounded-md px-2 sm:px-2.5 text-[10px] sm:text-[11px] font-semibold transition ${
-                            mapStrategy === option.id
-                              ? "bg-primary text-primary-foreground shadow-sm"
-                              : "text-muted-foreground hover:bg-surface hover:text-foreground"
-                          }`}
-                        >
-                          {option.shortLabel}
-                        </button>
-                      ))}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={generateFullMap}
-                      disabled={aiBusy || aiUsageBlocked}
-                      title="Generate a complete, playable map with assets using the selected Map mode. Type a theme (e.g. 'neon city') first to steer it."
-                      className="mt-1 inline-flex h-9 w-full basis-full items-center justify-center gap-2 rounded-lg bg-primary/90 px-3 text-xs font-bold text-primary-foreground transition hover:bg-primary disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      🗺️ Generate Full Map
-                    </button>
+                  <div className="mb-2 rounded-lg border border-border/50 bg-surface/35 px-2 py-1.5 sm:px-2.5 sm:py-2">
                     <button
                       type="button"
                       onClick={autoArrange}
                       disabled={aiBusy || aiUsageBlocked}
                       title="Auto-arrange: ground, scale, space, and tidy every map object so nothing floats or overlaps (undoable)"
-                      className="mt-1 inline-flex h-9 w-full basis-full items-center justify-center gap-2 rounded-lg border border-primary/40 bg-surface/50 px-3 text-xs font-bold text-foreground transition hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50"
+                      className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg border border-primary/40 bg-surface/50 px-3 text-xs font-bold text-foreground transition hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       🧭 Auto-Arrange Placement
                     </button>

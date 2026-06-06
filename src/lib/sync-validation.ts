@@ -445,6 +445,11 @@ export function validateGenerated(
 
   // 2. Actions
   const seenRemoteNames = new Set<string>();
+  // Track toolbox asset reuse. The smart-builder rules require asset variety
+  // (never the same assetId twice unless the user asked for copies); a city of
+  // 30 identical buildings reads as a failed build. We can't know from here
+  // whether duplicates were intentional, so we warn rather than drop.
+  const assetIdCounts = new Map<number, number>();
   for (const rawAction of actions) {
     const a = normalizeActionProps(rawAction);
     const target = `${a?.type ?? "action"}:${a?.name ?? a?.path ?? "?"}`;
@@ -745,6 +750,19 @@ export function validateGenerated(
           message: "toolbox insert has an invalid assetId",
         });
         continue;
+      }
+      const priorCount = assetIdCounts.get(a.assetId) ?? 0;
+      assetIdCounts.set(a.assetId, priorCount + 1);
+      // Warn the second time an assetId appears (so a single warning per dup id,
+      // not one per copy). Honors an explicit allowDuplicate flag for the rare
+      // case the AI deliberately wants copies (e.g. user asked for "10 of these").
+      if (priorCount === 1 && a.allowDuplicate !== true) {
+        warnings.push({
+          level: "warning",
+          scope: "action",
+          target,
+          message: `assetId ${a.assetId} inserted more than once — use varied assets for a richer scene unless duplicates were requested`,
+        });
       }
       if (a.scanScripts !== true && a.removeUnsafeScripts !== true) {
         warnings.push({
