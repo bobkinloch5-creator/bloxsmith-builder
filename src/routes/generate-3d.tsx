@@ -645,6 +645,7 @@ function Generate3DPage() {
   const [secondaryColor, setSecondaryColor] = useState("#0f172a");
   const [quality, setQuality] = useState<"turbo" | "standard" | "detailed">("turbo");
   const [format, setFormat] = useState<"GLB" | "OBJ" | "FBX">("GLB");
+  const [provider, setProvider] = useState<"tripo" | "meshy">("tripo");
   const [faceLimit, setFaceLimit] = useState(10000);
   const [texture, setTexture] = useState(true);
   const [rigged, setRigged] = useState(false);
@@ -877,6 +878,7 @@ function Generate3DPage() {
           texture,
           rigged,
           animateInPlace,
+          provider,
         },
       })) as Generate3DResult;
       if (out.ok) {
@@ -1248,6 +1250,29 @@ function Generate3DPage() {
 
                   {kind === "model" && (
                     <>
+                      <Group label="AI engine">
+                        <div className="flex gap-2">
+                          {(["tripo", "meshy"] as const).map((p) => (
+                            <button
+                              key={p}
+                              type="button"
+                              onClick={() => setProvider(p)}
+                              className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium capitalize transition ${
+                                provider === p
+                                  ? "border-primary bg-primary text-primary-foreground"
+                                  : "border-border bg-surface hover:bg-surface-elevated"
+                              }`}
+                            >
+                              {p === "tripo" ? "Tripo 3D" : "Meshy AI"}
+                            </button>
+                          ))}
+                        </div>
+                        <p className="mt-1 text-[10px] text-muted-foreground">
+                          {provider === "tripo"
+                            ? "Tripo: best for stylized props, rigging, and FBX export."
+                            : "Meshy: best for realistic textures and PBR materials."}
+                        </p>
+                      </Group>
                       <Group label="Quality"><VisualChips value={quality} set={(v) => setQuality(v as typeof quality)} items={["turbo", "standard", "detailed"]} images={qualityImages} compact /></Group>
                       <Group label="Format"><VisualChips value={format} set={(v) => setFormat(v as typeof format)} items={["GLB", "OBJ", "FBX"]} images={formatImages} compact /></Group>
                       <label className="block text-xs font-medium">

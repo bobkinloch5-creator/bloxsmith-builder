@@ -36,6 +36,7 @@ const InputSchema = z.object({
   style: z.string().max(64).optional(),
   rigged: z.boolean().default(false),
   animateInPlace: z.boolean().default(false),
+  provider: z.enum(["tripo", "meshy"]).default("tripo"),
 });
 
 export type Generate3DResult =
@@ -389,53 +390,82 @@ export const generate3DModelFn = createServerFn({ method: "POST" })
     let studioFilePath: string | null = null;
 
     if (data.generationKind === "model") {
-      result = await generate3DModel({
-        userId,
-        prompt: buildModelPrompt(data),
-        inputMode: data.inputMode,
-        imageDataUrl: data.imageDataUrl ?? null,
-        quality: data.quality,
-        format: data.rigged && data.format === "OBJ" ? "FBX" : data.format,
-        faceLimit: data.faceLimit,
-        texture: data.texture,
-        style: data.style ?? null,
-        rigged: data.rigged,
-        animateInPlace: data.animateInPlace,
-      });
-      // If the primary key failed and a fallback key is configured, retry with
-      // it — but cap fallback usage at 3 successful runs per 7 days per user.
-      if (!result.ok && process.env.TRIPO_FALLBACK_API_KEY) {
-        const since = new Date(Date.now() - WEEKLY_WINDOW_MS).toISOString();
-        const { count: fbCount } = await (supabaseAdmin as any)
-          .from("model_generations_3d")
-          .select("id", { count: "exact", head: true })
-          .eq("user_id", userId)
-          .eq("status", "success")
-          .gte("created_at", since)
-          .filter("settings->>used_fallback", "eq", "true");
-        const fallbackUsed = Number(fbCount ?? 0);
-        if (fallbackUsed < 3) {
-          console.warn(
-            `[generate3DModelFn] primary Tripo failed (${result.error}); retrying with fallback (${fallbackUsed}/3 used).`,
-          );
-          result = await generate3DModel({
-            userId,
-            prompt: buildModelPrompt(data),
-            inputMode: data.inputMode,
-            imageDataUrl: data.imageDataUrl ?? null,
-            quality: data.quality,
-            format: data.rigged && data.format === "OBJ" ? "FBX" : data.format,
-            faceLimit: data.faceLimit,
-            texture: data.texture,
-            style: data.style ?? null,
-            rigged: data.rigged,
-            animateInPlace: data.animateInPlace,
-            useFallbackKey: true,
-          });
-          if (result.ok) {
-            (settings as any).used_fallback = true;
+      if (data.provider === "meshy") {
+        const { generate3DModelMeshy } = await import("./meshy.server");
+        const meshyOut = await generate3DModelMeshy({
+          userId,
+          prompt: buildModelPrompt(data),
+          inputMode: data.inputMode,
+          imageDataUrl: data.imageDataUrl ?? null,
+          quality: data.quality,
+          format: data.rigged && data.format === "OBJ" ? "FBX" : data.format,
+          faceLimit: data.faceLimit,
+          texture: data.texture,
+          style: data.style ?? null,
+        });
+        if (!meshyOut.ok) {
+          return { ok: false, error: `${meshyOut.error} (No credits were charged.)` };
+        }
+        result = {
+          ok: true,
+          fileUrl: meshyOut.fileUrl,
+          filePath: meshyOut.filePath,
+          format: meshyOut.format,
+          previewGlbUrl: meshyOut.previewGlbUrl,
+          tripoTaskId: meshyOut.meshyTaskId,
+          renderedImageUrl: meshyOut.renderedImageUrl,
+        };
+        (settings as any).provider = "meshy";
+      } else {
+        result = await generate3DModel({
+          userId,
+          prompt: buildModelPrompt(data),
+          inputMode: data.inputMode,
+          imageDataUrl: data.imageDataUrl ?? null,
+          quality: data.quality,
+          format: data.rigged && data.format === "OBJ" ? "FBX" : data.format,
+          faceLimit: data.faceLimit,
+          texture: data.texture,
+          style: data.style ?? null,
+          rigged: data.rigged,
+          animateInPlace: data.animateInPlace,
+        });
+        // If the primary key failed and a fallback key is configured, retry with
+        // it — but cap fallback usage at 3 successful runs per 7 days per user.
+        if (!result.ok && process.env.TRIPO_FALLBACK_API_KEY) {
+          const since = new Date(Date.now() - WEEKLY_WINDOW_MS).toISOString();
+          const { count: fbCount } = await (supabaseAdmin as any)
+            .from("model_generations_3d")
+            .select("id", { count: "exact", head: true })
+            .eq("user_id", userId)
+            .eq("status", "success")
+            .gte("created_at", since)
+            .filter("settings->>used_fallback", "eq", "true");
+          const fallbackUsed = Number(fbCount ?? 0);
+          if (fallbackUsed < 3) {
+            console.warn(
+              `[generate3DModelFn] primary Tripo failed (${result.error}); retrying with fallback (${fallbackUsed}/3 used).`,
+            );
+            result = await generate3DModel({
+              userId,
+              prompt: buildModelPrompt(data),
+              inputMode: data.inputMode,
+              imageDataUrl: data.imageDataUrl ?? null,
+              quality: data.quality,
+              format: data.rigged && data.format === "OBJ" ? "FBX" : data.format,
+              faceLimit: data.faceLimit,
+              texture: data.texture,
+              style: data.style ?? null,
+              rigged: data.rigged,
+              animateInPlace: data.animateInPlace,
+              useFallbackKey: true,
+            });
+            if (result.ok) {
+              (settings as any).used_fallback = true;
+            }
           }
         }
+        (settings as any).provider = "tripo";
       }
       if (!result.ok) {
         return { ok: false, error: `${result.error} (No credits were charged.)` };
