@@ -77,65 +77,130 @@ type EmbedItem = { embedding: number[]; index: number };
 const OPENAI_EMBED_MODEL = EMBED_MODEL.replace(/^openai\//, "");
 
 // Calls the embeddings API for one string or a batch. Prefers the Lovable AI
-// gateway; if that gateway is OUT OF CREDITS (HTTP 402 / payment_required) and
-// an OPENAI_API_KEY is configured, it transparently falls back to OpenAI
-// directly — text-embedding-3-small @ 1536 dims is the SAME vector space, so
-// chunks stay compatible with anything already indexed. When neither path can
-// run, it throws a clear, actionable error instead of a cryptic status code.
+// gateway; if that gateway is OUT OF CREDITS (HTTP 402 / payment_required) or
+// otherwise fails, it transparently falls back through every OpenAI-compatible
+// embedding provider that has a key configured — OpenAI, then CometAPI, then
+// Neokens. All of them serve text-embedding-3-small at 1536 dims, which is the
+// SAME vector space, so chunks stay mutually compatible no matter which
+// provider produced them. This means the docs index works with the Comet /
+// Neokens key that already powers chat — no Lovable top-up or new OpenAI key
+// required. When NO provider can run, it throws a clear, actionable error.
+const stripTrailingSlash = (u: string) => u.replace(/\/+$/, "");
+
 async function callEmbeddings(input: string | string[]): Promise<EmbedItem[]> {
   const lovableKey = process.env.LOVABLE_API_KEY;
   const openaiKey = process.env.OPENAI_API_KEY;
+  const cometKey = process.env.COMETAPI_KEY || process.env.COMET_API_KEY;
+  const cometBase = stripTrailingSlash(process.env.COMET_BASE_URL || "https://api.cometapi.com/v1");
+  const neokensKey = process.env.NEOKENS_API_KEY || process.env.NEOKENS_KEY;
+  const neokensBase = stripTrailingSlash(
+    process.env.NEOKENS_BASE_URL || "https://api.quatarly.cloud/v1",
+  );
 
-  const callOpenAI = async (): Promise<EmbedItem[]> => {
-    const res = await fetch("https://api.openai.com/v1/embeddings", {
+  // One OpenAI-compatible /v1/embeddings call. Every gateway below proxies
+  // text-embedding-3-small into the same 1536-dim space.
+  const callDirect = async (label: string, url: string, key: string): Promise<EmbedItem[]> => {
+    const res = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${openaiKey}` },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
       body: JSON.stringify({ model: OPENAI_EMBED_MODEL, input, dimensions: EMBED_DIMS }),
     });
     if (!res.ok) {
       const body = await res.text().catch(() => "");
-      throw new Error(`OpenAI embeddings ${res.status}: ${body.slice(0, 200)}`);
+      throw new Error(`${label} embeddings ${res.status}: ${body.slice(0, 200)}`);
     }
     return ((await res.json()) as { data: EmbedItem[] }).data;
   };
 
+  // Ordered fallback chain of direct providers, using whatever keys exist.
+  const directProviders: Array<{ label: string; url: string; key: string }> = [];
+  if (openaiKey)
+    directProviders.push({
+      label: "OpenAI",
+      url: "https://api.openai.com/v1/embeddings",
+      key: openaiKey,
+    });
+  if (cometKey)
+    directProviders.push({ label: "CometAPI", url: `${cometBase}/embeddings`, key: cometKey });
+  if (neokensKey)
+    directProviders.push({ label: "Neokens", url: `${neokensBase}/embeddings`, key: neokensKey });
+
+  // Returns embeddings from the first provider that succeeds. Returns null only
+  // when NO provider is configured; throws the last error if all configured
+  // providers failed (so the caller surfaces a specific reason).
+  const tryDirectProviders = async (): Promise<EmbedItem[] | null> => {
+    if (directProviders.length === 0) return null;
+    let lastErr: unknown = null;
+    for (const p of directProviders) {
+      try {
+        return await callDirect(p.label, p.url, p.key);
+      } catch (e) {
+        lastErr = e;
+        console.warn(
+          `[roblox-docs] ${p.label} embeddings failed, trying next provider:`,
+          e instanceof Error ? e.message : e,
+        );
+      }
+    }
+    throw lastErr instanceof Error ? lastErr : new Error("all embedding providers failed");
+  };
+
   // 1. Prefer the Lovable gateway when its key is present.
   if (lovableKey) {
-    const res = await fetch("https://ai.gateway.lovable.dev/v1/embeddings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${lovableKey}` },
-      body: JSON.stringify({ model: EMBED_MODEL, input, dimensions: EMBED_DIMS }),
-    });
-    if (res.ok) return ((await res.json()) as { data: EmbedItem[] }).data;
-
-    const body = await res.text().catch(() => "");
-    const outOfCredits =
-      res.status === 402 || /payment_required|not enough credits|insufficient/i.test(body);
-
-    // On a billing/credit failure, fall back to OpenAI directly if we can.
-    if (outOfCredits && openaiKey) {
-      console.warn(
-        "[roblox-docs] Lovable embeddings out of credits (402) — falling back to OPENAI_API_KEY.",
-      );
-      return callOpenAI();
+    let lovableOk = false;
+    let status = 0;
+    let body = "";
+    try {
+      const res = await fetch("https://ai.gateway.lovable.dev/v1/embeddings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${lovableKey}` },
+        body: JSON.stringify({ model: EMBED_MODEL, input, dimensions: EMBED_DIMS }),
+      });
+      status = res.status;
+      if (res.ok) {
+        lovableOk = true;
+        return ((await res.json()) as { data: EmbedItem[] }).data;
+      }
+      body = await res.text().catch(() => "");
+    } catch (e) {
+      body = e instanceof Error ? e.message : String(e);
     }
-    if (outOfCredits) {
-      throw new Error(
-        `Embedding provider is out of credits (Lovable AI gateway returned ${res.status}). ` +
-          `Fix it one of two ways: (a) top up your Lovable AI credits, or (b) set an OPENAI_API_KEY ` +
-          `env var and the docs sync will embed directly via OpenAI (text-embedding-3-small, ` +
-          `~$0.02 per 1M tokens). Original: ${body.slice(0, 160)}`,
-      );
+
+    if (!lovableOk) {
+      const outOfCredits =
+        status === 402 || /payment_required|not enough credits|insufficient/i.test(body);
+
+      // On ANY Lovable failure, fall back through the configured direct
+      // providers (Comet/Neokens/OpenAI) before giving up.
+      const fallback = await tryDirectProviders();
+      if (fallback) {
+        console.warn(
+          `[roblox-docs] Lovable embeddings failed (${status || "network"}${
+            outOfCredits ? ", out of credits" : ""
+          }) — used a direct embedding provider instead.`,
+        );
+        return fallback;
+      }
+
+      if (outOfCredits) {
+        throw new Error(
+          `Embedding provider is out of credits (Lovable AI gateway returned ${status}). ` +
+            `Fix it one of three ways: (a) top up your Lovable AI credits, (b) set OPENAI_API_KEY, or ` +
+            `(c) set COMETAPI_KEY or NEOKENS_API_KEY — the docs sync will then embed via that gateway ` +
+            `(text-embedding-3-small, 1536-dim, same vector space). Original: ${body.slice(0, 160)}`,
+        );
+      }
+      throw new Error(`embeddings ${status}: ${body.slice(0, 200)}`);
     }
-    throw new Error(`embeddings ${res.status}: ${body.slice(0, 200)}`);
   }
 
-  // 2. No Lovable key — use OpenAI directly if available.
-  if (openaiKey) return callOpenAI();
+  // 2. No Lovable key — use any configured direct provider.
+  const direct = await tryDirectProviders();
+  if (direct) return direct;
 
   throw new Error(
-    "No embedding provider configured. Set LOVABLE_API_KEY (Lovable AI gateway) or OPENAI_API_KEY " +
-      "to enable the Roblox docs index.",
+    "No embedding provider configured. Set LOVABLE_API_KEY, OPENAI_API_KEY, COMETAPI_KEY, or " +
+      "NEOKENS_API_KEY to enable the Roblox docs index.",
   );
 }
 
