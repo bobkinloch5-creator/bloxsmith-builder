@@ -1078,6 +1078,7 @@ export type Database = {
           referred_by: string | null
           show_activity: boolean
           specialization: string | null
+          favorite_game_types: string[] | null
           status_message: string | null
           theme: string | null
           updated_at: string
@@ -1128,6 +1129,7 @@ export type Database = {
           referred_by?: string | null
           show_activity?: boolean
           specialization?: string | null
+          favorite_game_types?: string[] | null
           status_message?: string | null
           theme?: string | null
           updated_at?: string
@@ -1178,6 +1180,7 @@ export type Database = {
           referred_by?: string | null
           show_activity?: boolean
           specialization?: string | null
+          favorite_game_types?: string[] | null
           status_message?: string | null
           theme?: string | null
           updated_at?: string
@@ -1950,6 +1953,24 @@ export type Database = {
           updated_at?: string
           url?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      user_blocks: {
+        Row: {
+          blocker_id: string
+          blocked_id: string
+          created_at: string
+        }
+        Insert: {
+          blocker_id: string
+          blocked_id: string
+          created_at?: string
+        }
+        Update: {
+          blocker_id?: string
+          blocked_id?: string
+          created_at?: string
         }
         Relationships: []
       }

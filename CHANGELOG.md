@@ -2,6 +2,16 @@
 
 ## Latest Updates
 
+### User Blocking, Profile Showcase & Chat Safety
+
+- **User Blocking System**: Added a robust blocking database table and functions (`public.block_user`, `public.unblock_user`) that automatically sever friendship and follow connections between users.
+- **Profile Creations Showcase**: Updated the User Profile Popover to load and display a grid of the user's published showcase projects from the database.
+- **Block & Unblock UI Controls**: Integrated "Block" and "Unblock" buttons into the public profile popover with instant UI state updates and database triggers.
+- **Global Chat Hiding**: Modified the Global Chat component to automatically filter out messages from both blocked users and locally muted users.
+- **Realtime Safety Updates**: Added realtime Postgres listeners for the `user_blocks` and `user_chat_local_mutes` tables to instantly hide or show messages when blocking/muting actions occur.
+- **Favorite Roblox Game Types**: Added a multi-select genre selector in the Account profile settings page, allowing users to showcase their favorite Roblox game types (such as Simulator, Tycoon, Obby, RPG, etc.) directly on their public profile card.
+- **Tuned Promotion Rewards**: Updated the Promote & Earn component to adjust the maximum reward for YouTube video submissions from 150 credits to 100 credits.
+
 ### Model-Priced UI Generator
 
 - Added a dedicated AI model picker to the Roblox UI Generator with six quality tiers from low-cost everyday generation to premium complex interface design.
