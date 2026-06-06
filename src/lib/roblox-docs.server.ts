@@ -71,49 +71,89 @@ export type DocsCitation = {
 
 // ---------------- Embeddings ----------------
 
-async function embed(text: string): Promise<number[]> {
-  const apiKey = process.env.LOVABLE_API_KEY;
-  if (!apiKey) throw new Error("LOVABLE_API_KEY not set");
-  const res = await fetch("https://ai.gateway.lovable.dev/v1/embeddings", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({ model: EMBED_MODEL, input: text, dimensions: EMBED_DIMS }),
-  });
-  if (!res.ok) {
+type EmbedItem = { embedding: number[]; index: number };
+
+// Direct OpenAI model id (the Lovable gateway prefixes provider names).
+const OPENAI_EMBED_MODEL = EMBED_MODEL.replace(/^openai\//, "");
+
+// Calls the embeddings API for one string or a batch. Prefers the Lovable AI
+// gateway; if that gateway is OUT OF CREDITS (HTTP 402 / payment_required) and
+// an OPENAI_API_KEY is configured, it transparently falls back to OpenAI
+// directly — text-embedding-3-small @ 1536 dims is the SAME vector space, so
+// chunks stay compatible with anything already indexed. When neither path can
+// run, it throws a clear, actionable error instead of a cryptic status code.
+async function callEmbeddings(input: string | string[]): Promise<EmbedItem[]> {
+  const lovableKey = process.env.LOVABLE_API_KEY;
+  const openaiKey = process.env.OPENAI_API_KEY;
+
+  const callOpenAI = async (): Promise<EmbedItem[]> => {
+    const res = await fetch("https://api.openai.com/v1/embeddings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${openaiKey}` },
+      body: JSON.stringify({ model: OPENAI_EMBED_MODEL, input, dimensions: EMBED_DIMS }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new Error(`OpenAI embeddings ${res.status}: ${body.slice(0, 200)}`);
+    }
+    return ((await res.json()) as { data: EmbedItem[] }).data;
+  };
+
+  // 1. Prefer the Lovable gateway when its key is present.
+  if (lovableKey) {
+    const res = await fetch("https://ai.gateway.lovable.dev/v1/embeddings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${lovableKey}` },
+      body: JSON.stringify({ model: EMBED_MODEL, input, dimensions: EMBED_DIMS }),
+    });
+    if (res.ok) return ((await res.json()) as { data: EmbedItem[] }).data;
+
     const body = await res.text().catch(() => "");
-    throw new Error(`embed ${res.status}: ${body.slice(0, 200)}`);
+    const outOfCredits =
+      res.status === 402 || /payment_required|not enough credits|insufficient/i.test(body);
+
+    // On a billing/credit failure, fall back to OpenAI directly if we can.
+    if (outOfCredits && openaiKey) {
+      console.warn(
+        "[roblox-docs] Lovable embeddings out of credits (402) — falling back to OPENAI_API_KEY.",
+      );
+      return callOpenAI();
+    }
+    if (outOfCredits) {
+      throw new Error(
+        `Embedding provider is out of credits (Lovable AI gateway returned ${res.status}). ` +
+          `Fix it one of two ways: (a) top up your Lovable AI credits, or (b) set an OPENAI_API_KEY ` +
+          `env var and the docs sync will embed directly via OpenAI (text-embedding-3-small, ` +
+          `~$0.02 per 1M tokens). Original: ${body.slice(0, 160)}`,
+      );
+    }
+    throw new Error(`embeddings ${res.status}: ${body.slice(0, 200)}`);
   }
-  const json = (await res.json()) as { data: { embedding: number[] }[] };
-  const vec = json?.data?.[0]?.embedding;
+
+  // 2. No Lovable key — use OpenAI directly if available.
+  if (openaiKey) return callOpenAI();
+
+  throw new Error(
+    "No embedding provider configured. Set LOVABLE_API_KEY (Lovable AI gateway) or OPENAI_API_KEY " +
+      "to enable the Roblox docs index.",
+  );
+}
+
+async function embed(text: string): Promise<number[]> {
+  const data = await callEmbeddings(text);
+  const vec = data?.[0]?.embedding;
   if (!Array.isArray(vec) || vec.length !== EMBED_DIMS) {
     throw new Error("invalid embedding response");
   }
   return vec;
 }
 
-// Batched embedding (OpenAI accepts arrays via input)
+// Batched embedding (the embeddings API accepts an array via `input`).
 async function embedBatch(texts: string[]): Promise<number[][]> {
   if (!texts.length) return [];
-  const apiKey = process.env.LOVABLE_API_KEY;
-  if (!apiKey) throw new Error("LOVABLE_API_KEY not set");
-  const res = await fetch("https://ai.gateway.lovable.dev/v1/embeddings", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({ model: EMBED_MODEL, input: texts, dimensions: EMBED_DIMS }),
-  });
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`embedBatch ${res.status}: ${body.slice(0, 200)}`);
-  }
-  const json = (await res.json()) as { data: { embedding: number[]; index: number }[] };
+  const data = await callEmbeddings(texts);
   const out: number[][] = Array(texts.length);
-  for (const d of json.data) out[d.index] = d.embedding;
+  for (const d of data) out[d.index] = d.embedding;
   return out;
 }
 
