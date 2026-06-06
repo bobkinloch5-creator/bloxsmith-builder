@@ -69,10 +69,27 @@ Video generation is also limited to 1 video per user per rolling week for normal
 | ------------------- | ----------------------------------------------------------: |
 | Clothing generation |                                                           2 |
 | Image generation    |                                             2 per variation |
-| UI generation       |                                                           5 |
+| UI generation       |                           2–15, based on the selected model |
 | Text-to-3D          |      10 by default, configurable with `TEXT_3D_CREDIT_COST` |
 | Image/model-to-3D   |     25 by default, configurable with `MODEL_3D_CREDIT_COST` |
 | 3D animation        | 12 by default, configurable with `ANIMATION_3D_CREDIT_COST` |
+
+## UI Generator Model Prices
+
+The UI Generator uses fixed per-generation prices. The selected model and cost
+are validated on the server; clients cannot submit a cheaper price.
+
+| Tier     | Model             | Provider     | Credits |
+| -------- | ----------------- | ------------ | ------: |
+| Cheapest | Gemini 3 Flash    | Neokens      |       2 |
+| Budget   | DeepSeek V4 Flash | BloxSmith AI |       3 |
+| Balanced | GPT 5.3 Codex     | Neokens      |       5 |
+| Advanced | Claude Sonnet 4.6 | BloxSmith AI |       8 |
+| Premium  | GPT 5.4           | Neokens      |      10 |
+| Maximum  | Claude Opus 4.7   | BloxSmith AI |      15 |
+
+If the selected model is unavailable or fails to return a valid UI after its
+retry, the generation fails and the charged credits are refunded.
 
 ## Legacy And Fallback AI Model Aliases
 

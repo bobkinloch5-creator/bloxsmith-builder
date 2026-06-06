@@ -64,6 +64,17 @@ const checks = [
     ],
   },
   {
+    name: "UI Generator supports server-priced selectable AI models",
+    file: "src/lib/ui-generator.functions.ts",
+    must: [
+      /UI_GENERATOR_MODELS/,
+      /modelId/,
+      /selectedModel\.credits/,
+      /selectedModel\.model/,
+      /ui_generator_failed/,
+    ],
+  },
+  {
     name: "Project memory is persisted and injected into AI prompts",
     file: "src/lib/ai-memory.server.ts",
     must: [

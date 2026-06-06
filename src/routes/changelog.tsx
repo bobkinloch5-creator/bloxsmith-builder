@@ -48,6 +48,47 @@ const tagStyles = {
 
 export const changelogItems = [
   {
+    version: "v3.10.0",
+    date: "June 6, 2026",
+    title: "Model-Priced UI Generator",
+    description:
+      "The Roblox UI Generator now lets creators choose the AI model for each design, with transparent fixed prices from a cheap Gemini option through premium GPT and Claude tiers.",
+    updates: [
+      {
+        category: "AI",
+        tagColor: tagStyles.ai,
+        icon: Bot,
+        title: "Six Selectable UI Models",
+        detail:
+          "Choose Gemini 3 Flash, DeepSeek V4 Flash, GPT 5.3 Codex, Claude Sonnet 4.6, GPT 5.4, or Claude Opus 4.7. Each option explains its strengths for speed, layout quality, Luau behavior, visual polish, and complex multi-panel interfaces.",
+      },
+      {
+        category: "Backend",
+        tagColor: tagStyles.backend,
+        icon: CreditCard,
+        title: "Transparent 2–15 Credit Pricing",
+        detail:
+          "Gemini costs 2 credits, DeepSeek 3, GPT Codex 5, Sonnet 8, GPT 5.4 10, and Opus 15 per UI generation. The model whitelist and exact price are enforced on the server, so client-side changes cannot underpay for premium models.",
+      },
+      {
+        category: "Security",
+        tagColor: tagStyles.security,
+        icon: ShieldCheck,
+        title: "Exact Routing & Fair Refunds",
+        detail:
+          "UI requests route to the exact selected provider and model. If that model is unavailable or cannot return a valid UI after retrying, the request fails and credits are refunded instead of charging for a hidden fallback.",
+      },
+      {
+        category: "UI",
+        tagColor: tagStyles.ui,
+        icon: Palette,
+        title: "Clear Model Marketplace",
+        detail:
+          "The generator now shows tier badges, descriptions, model prices, the active model in workspace stats, model-aware generation progress, and the actual model used in the completion message. The selection is remembered for the next visit.",
+      },
+    ],
+  },
+  {
     version: "v3.9.9",
     date: "June 6, 2026",
     title: "Reliable Autopilot & Atomic Studio Delivery",

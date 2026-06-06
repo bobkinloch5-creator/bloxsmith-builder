@@ -11,8 +11,13 @@ import {
 } from "@/lib/ui-generator.server";
 import { isGeneratorOwner } from "@/lib/generator-credits.server";
 import { recordAiUsageEvent } from "@/lib/usage-events.server";
+import {
+  DEFAULT_UI_GENERATOR_MODEL_ID,
+  getUIGeneratorModel,
+  UI_GENERATOR_MODELS,
+} from "@/lib/ui-generator-models";
 
-export const UI_GEN_CREDIT_COST = 5;
+export const UI_GEN_CREDIT_COST = getUIGeneratorModel(DEFAULT_UI_GENERATOR_MODEL_ID).credits;
 
 const Color = z.object({
   r: z.number().int().min(0).max(255),
@@ -29,6 +34,9 @@ const GenerateInput = z.object({
   accentColor: Color.optional(),
   bgColor: Color.optional(),
   projectId: z.string().uuid().optional(),
+  modelId: z
+    .enum(UI_GENERATOR_MODELS.map((model) => model.id) as [string, ...string[]])
+    .default(DEFAULT_UI_GENERATOR_MODEL_ID),
 });
 
 async function trySpend(supabase: any, amount: number) {
@@ -49,12 +57,16 @@ export const generateRobloxUIFn = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     const isOwner = await isGeneratorOwner(userId, supabase);
+    const selectedModel = getUIGeneratorModel(data.modelId);
+    const creditCost = selectedModel.credits;
 
-    const spendErr = await trySpend(supabase, UI_GEN_CREDIT_COST);
+    const spendErr = isOwner ? null : await trySpend(supabase, creditCost);
     if (spendErr) {
       const msg = (spendErr.message || "").toLowerCase();
       if (msg.includes("insufficient") || msg.includes("not enough")) {
-        throw new Error(`Not enough credits — UI generation costs ${UI_GEN_CREDIT_COST} credits.`);
+        throw new Error(
+          `Not enough credits — ${selectedModel.label} costs ${creditCost} credits for UI generation.`,
+        );
       }
       throw new Error(spendErr.message || "Could not charge credits.");
     }
@@ -69,9 +81,10 @@ export const generateRobloxUIFn = createServerFn({ method: "POST" })
         primaryColor: data.primaryColor,
         accentColor: data.accentColor,
         bgColor: data.bgColor,
+        model: selectedModel,
       });
     } catch (err: any) {
-      await tryRefund(supabase, UI_GEN_CREDIT_COST, "ui_generator_failed");
+      if (!isOwner) await tryRefund(supabase, creditCost, "ui_generator_failed");
       throw new Error(err?.message || "UI generation failed. Try again.");
     }
 
@@ -79,9 +92,14 @@ export const generateRobloxUIFn = createServerFn({ method: "POST" })
     await recordAiUsageEvent({
       userId,
       source: "UI Generator",
-      creditsUsed: isOwner ? 0 : UI_GEN_CREDIT_COST,
-      model: "BloxSmith UI Generator",
-      metadata: { category: data.category, style: data.style },
+      creditsUsed: isOwner ? 0 : creditCost,
+      model: selectedModel.model,
+      metadata: {
+        category: data.category,
+        style: data.style,
+        modelId: selectedModel.id,
+        provider: selectedModel.provider,
+      },
     });
 
     // Save to the user's UI library
@@ -113,11 +131,14 @@ export const generateRobloxUIFn = createServerFn({ method: "POST" })
       spec,
       actions,
       files,
-      creditsCharged: UI_GEN_CREDIT_COST,
+      creditsCharged: isOwner ? 0 : creditCost,
+      model: selectedModel,
     };
   });
 
-const ListInput = z.object({ limit: z.number().int().min(1).max(50).default(30) }).default({ limit: 30 });
+const ListInput = z
+  .object({ limit: z.number().int().min(1).max(50).default(30) })
+  .default({ limit: 30 });
 
 const SaveGenerationInput = z.object({
   category: z.enum(UI_CATEGORIES),

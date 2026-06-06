@@ -2,6 +2,19 @@
 
 ## Latest Updates
 
+### Model-Priced UI Generator
+
+- Added a dedicated AI model picker to the Roblox UI Generator with six quality tiers from low-cost everyday generation to premium complex interface design.
+- Added Gemini 3 Flash for 2 credits, DeepSeek V4 Flash for 3, GPT 5.3 Codex for 5, Claude Sonnet 4.6 for 8, GPT 5.4 for 10, and Claude Opus 4.7 for 15 credits per UI generation.
+- Added model descriptions and Cheapest, Budget, Balanced, Advanced, Premium, and Maximum tier labels so users can choose based on speed, scripting quality, visual polish, and complexity.
+- The selected model and exact credit price are validated on the server. A modified client cannot request a premium model while submitting a cheaper cost.
+- UI generations now route to the exact selected provider/model instead of silently using the first available internal gateway.
+- Selected models get model-appropriate output and timeout budgets, allowing premium models more room for detailed layouts, hierarchy, interactions, and complete Luau.
+- If the selected model is unavailable or fails to produce a valid UI after retrying, the request fails and normal-user credits are refunded instead of charging for a hidden deterministic fallback.
+- The UI Generator remembers the user's model selection locally, displays the active model and cost in its workspace statistics, and reports the actual model used in success messages and AI usage records.
+- Updated the site credit breakdown and `docs/CREDIT_PRICING.md` with the new 2-15 credit UI model ladder.
+- Added a reliability evaluation covering the UI model whitelist, server-side selection, model-specific charging, usage recording, and refund path.
+
 ### Reliable Autopilot Builds, Atomic Studio Delivery & Fair Refunds
 
 - Hardened Autopilot's two-pass generation so the backbone must contain Phases 1-3 and the frontend/world pass must contain Phases 4-6. Malformed, truncated, or missing phase output now gets one bounded retry instead of being silently accepted as complete.

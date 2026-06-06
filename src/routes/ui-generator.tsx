@@ -10,9 +10,14 @@ import {
   deleteUIGenerationFn,
   insertUIIntoStudioFn,
   saveUIGenerationFn,
-  UI_GEN_CREDIT_COST,
 } from "@/lib/ui-generator.functions";
 import { UI_STYLES, type UIStyle, type UICategory } from "@/lib/ui-generator.shared";
+import {
+  DEFAULT_UI_GENERATOR_MODEL_ID,
+  getUIGeneratorModel,
+  UI_GENERATOR_MODELS,
+  type UIGeneratorModelId,
+} from "@/lib/ui-generator-models";
 import { TemplateGrid } from "@/components/ui-generator/TemplateGrid";
 import { UIPreview } from "@/components/ui-generator/UIPreview";
 import { DevicePreviewFrame, type DeviceMode } from "@/components/ui-generator/DevicePreviewFrame";
@@ -22,6 +27,7 @@ import { toast } from "sonner";
 import {
   Braces,
   Code2,
+  Cpu,
   Eye,
   Image as ImageIcon,
   Layers3,
@@ -88,6 +94,8 @@ function UIGeneratorPage() {
   const [primary, setPrimary] = useState("#f59e0b");
   const [accent, setAccent] = useState("#8b5cf6");
   const [bg, setBg] = useState("#0f172a");
+  const [modelId, setModelId] = useState<UIGeneratorModelId>(DEFAULT_UI_GENERATOR_MODEL_ID);
+  const selectedModel = getUIGeneratorModel(modelId);
 
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState<"preview" | "image" | "luau" | "spec">("preview");
@@ -97,6 +105,7 @@ function UIGeneratorPage() {
     spec: any;
     actions: any[];
     files: any[];
+    model?: (typeof UI_GENERATOR_MODELS)[number];
   } | null>(null);
 
   // Image preview state
@@ -130,6 +139,18 @@ function UIGeneratorPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
+  useEffect(() => {
+    const stored = localStorage.getItem("bloxsmith:ui-generator-model");
+    if (stored && UI_GENERATOR_MODELS.some((model) => model.id === stored)) {
+      setModelId(stored as UIGeneratorModelId);
+    }
+  }, []);
+
+  const pickModel = (nextModelId: UIGeneratorModelId) => {
+    setModelId(nextModelId);
+    localStorage.setItem("bloxsmith:ui-generator-model", nextModelId);
+  };
+
   const refreshLibrary = async () => {
     if (!user) return;
     try {
@@ -160,20 +181,27 @@ function UIGeneratorPage() {
           accentColor: hexToRgb(accent),
           bgColor: hexToRgb(bg),
           projectId: projectId || undefined,
+          modelId,
         },
       });
       if (!res?.spec?.root || !Array.isArray(res?.actions) || res.actions.length === 0) {
         throw new Error("The generator returned an empty UI. Please try again.");
       }
-      setResult({ id: res.id, spec: res.spec, actions: res.actions, files: res.files });
+      setResult({
+        id: res.id,
+        spec: res.spec,
+        actions: res.actions,
+        files: res.files,
+        model: res.model,
+      });
       setImgSrc(null);
       setImgFinal(false);
       setImgError(null);
       setTab("preview");
       toast.success(
         res.id
-          ? `UI generated and saved — charged ${res.creditsCharged} credits.`
-          : `UI generated — charged ${res.creditsCharged} credits. Use Save to Library to keep it.`,
+          ? `UI generated with ${res.model?.label ?? selectedModel.label} and saved — charged ${res.creditsCharged} credits.`
+          : `UI generated with ${res.model?.label ?? selectedModel.label} — charged ${res.creditsCharged} credits. Use Save to Library to keep it.`,
       );
       refreshLibrary();
     } catch (e: any) {
@@ -267,8 +295,7 @@ function UIGeneratorPage() {
           category,
           style,
           prompt:
-            prompt.trim() ||
-            `A polished ${style.toLowerCase()} ${category} for a Roblox game.`,
+            prompt.trim() || `A polished ${style.toLowerCase()} ${category} for a Roblox game.`,
           title: result.spec?.title || title.trim() || category,
           projectId: projectId || undefined,
           spec: result.spec,
@@ -333,12 +360,12 @@ function UIGeneratorPage() {
         { label: "Actions", value: String(result.actions.length) },
         { label: "Scripts", value: String(result.files.length) },
         { label: "Remotes", value: String(result.spec.remoteEvents?.length ?? 0) },
-        { label: "Library", value: result.id ? "Saved" : "Unsaved" },
+        { label: "Model", value: result.model?.label ?? selectedModel.label },
       ]
     : [
         { label: "Template", value: category },
         { label: "Style", value: style },
-        { label: "Cost", value: `${UI_GEN_CREDIT_COST}` },
+        { label: "Cost", value: `${selectedModel.credits} cr` },
       ];
 
   return (
@@ -365,7 +392,9 @@ function UIGeneratorPage() {
                 <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                   <span className="font-semibold text-foreground/80 truncate">{activeTitle}</span>
                   <span className="hidden h-1 w-1 rounded-full bg-muted-foreground/45 sm:inline-block" />
-                  <span className="font-mono text-[11px] bg-background/40 border border-border/60 px-2 py-0.5 rounded-md">{activeScreenGui}</span>
+                  <span className="font-mono text-[11px] bg-background/40 border border-border/60 px-2 py-0.5 rounded-md">
+                    {activeScreenGui}
+                  </span>
                 </div>
               </div>
             </div>
@@ -378,7 +407,9 @@ function UIGeneratorPage() {
                   <div className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">
                     {item.label}
                   </div>
-                  <div className="max-w-[9rem] truncate text-sm font-bold text-foreground">{item.value}</div>
+                  <div className="max-w-[9rem] truncate text-sm font-bold text-foreground">
+                    {item.value}
+                  </div>
                 </div>
               ))}
               <button
@@ -397,16 +428,32 @@ function UIGeneratorPage() {
               <span className="h-1.5 w-1.5 rounded-full bg-primary" /> Saved UIs
             </h2>
             {library.length === 0 ? (
-              <p className="text-xs text-muted-foreground">Your saved generations will appear here.</p>
+              <p className="text-xs text-muted-foreground">
+                Your saved generations will appear here.
+              </p>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                 {library.map((it) => (
-                  <div key={it.id} className="rounded-xl border border-border/70 bg-surface/50 p-3.5 flex flex-col gap-1.5 hover:border-primary/20 hover:shadow-md transition-all duration-300">
+                  <div
+                    key={it.id}
+                    className="rounded-xl border border-border/70 bg-surface/50 p-3.5 flex flex-col gap-1.5 hover:border-primary/20 hover:shadow-md transition-all duration-300"
+                  >
                     <div className="text-sm font-bold line-clamp-1">{it.title}</div>
-                    <div className="text-[11px] text-muted-foreground font-medium">{it.category} · <span className="capitalize">{it.style ?? "—"}</span></div>
+                    <div className="text-[11px] text-muted-foreground font-medium">
+                      {it.category} · <span className="capitalize">{it.style ?? "—"}</span>
+                    </div>
                     <div className="flex gap-2 mt-2">
-                      <button onClick={() => openSaved(it.id)} className="flex-1 text-xs font-bold rounded-lg bg-secondary/80 text-foreground px-2 py-1.5 hover:bg-secondary transition active:scale-[0.97]">Open</button>
-                      <button onClick={() => removeSaved(it.id)} className="text-xs font-bold rounded-lg border border-border px-2.5 py-1.5 hover:bg-surface-elevated text-muted-foreground hover:text-destructive active:scale-[0.97] transition" title="Delete">
+                      <button
+                        onClick={() => openSaved(it.id)}
+                        className="flex-1 text-xs font-bold rounded-lg bg-secondary/80 text-foreground px-2 py-1.5 hover:bg-secondary transition active:scale-[0.97]"
+                      >
+                        Open
+                      </button>
+                      <button
+                        onClick={() => removeSaved(it.id)}
+                        className="text-xs font-bold rounded-lg border border-border px-2.5 py-1.5 hover:bg-surface-elevated text-muted-foreground hover:text-destructive active:scale-[0.97] transition"
+                        title="Delete"
+                      >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
@@ -423,9 +470,74 @@ function UIGeneratorPage() {
             <section className="glass rounded-2xl p-4 space-y-3.5 border border-border/80 shadow-sm">
               <div className="flex items-center justify-between gap-2">
                 <SectionTitle icon={Layers3} label="Template" />
-                <span className="rounded-lg border border-border bg-background/30 px-2 py-1 text-[10px] font-bold text-muted-foreground truncate max-w-[55%]" title={category}>{category}</span>
+                <span
+                  className="rounded-lg border border-border bg-background/30 px-2 py-1 text-[10px] font-bold text-muted-foreground truncate max-w-[55%]"
+                  title={category}
+                >
+                  {category}
+                </span>
               </div>
-              <TemplateGrid active={category} onPick={setCategory} />
+              <TemplateGrid
+                active={category}
+                onPick={setCategory}
+                creditCost={selectedModel.credits}
+              />
+            </section>
+
+            <section className="glass rounded-2xl p-4 space-y-3.5 border border-border/80 shadow-sm">
+              <div className="flex items-center justify-between gap-2">
+                <SectionTitle icon={Cpu} label="AI Model" />
+                <span className="rounded-lg border border-primary/25 bg-primary/10 px-2 py-1 text-[10px] font-black text-primary">
+                  {selectedModel.credits} credits
+                </span>
+              </div>
+              <div className="grid grid-cols-1 gap-2">
+                {UI_GENERATOR_MODELS.map((model) => {
+                  const active = model.id === modelId;
+                  return (
+                    <button
+                      key={model.id}
+                      type="button"
+                      onClick={() => pickModel(model.id)}
+                      className={`rounded-xl border p-3 text-left transition-all duration-200 ${
+                        active
+                          ? "border-primary/60 bg-primary/10 shadow-[0_0_18px_-8px_rgba(20,241,149,0.7)]"
+                          : "border-border/70 bg-background/25 hover:border-primary/30 hover:bg-surface/70"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-xs font-black text-foreground">
+                              {model.label}
+                            </span>
+                            <span className="rounded-md bg-surface-elevated px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-muted-foreground">
+                              {model.tier}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-[10.5px] leading-relaxed text-muted-foreground">
+                            {model.description}
+                          </p>
+                        </div>
+                        <span
+                          className={`shrink-0 rounded-lg px-2 py-1 text-[10px] font-black ${
+                            active
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-surface-elevated text-foreground"
+                          }`}
+                        >
+                          {model.credits} cr
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-[10.5px] leading-relaxed text-muted-foreground">
+                Stronger models cost more because they spend more reasoning and output capacity on
+                layout, styling, scripts, and interactions. The selected price is enforced on the
+                server.
+              </p>
             </section>
 
             <section className="glass rounded-2xl p-4 space-y-3.5 border border-border/80 shadow-sm">
@@ -468,8 +580,14 @@ function UIGeneratorPage() {
                 disabled={busy}
                 className="btn-shine w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-primary via-primary-glow to-accent py-3.5 text-sm font-bold text-primary-foreground shadow-lg hover:shadow-primary/30 hover:scale-[1.01] active:scale-[0.98] transition-all duration-300 disabled:opacity-60 border-0 cursor-pointer"
               >
-                {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                {busy ? "Generating…" : `Generate — ${UI_GEN_CREDIT_COST} credits`}
+                {busy ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Sparkles className="w-4 h-4" />
+                )}
+                {busy
+                  ? `Generating with ${selectedModel.label}…`
+                  : `Generate with ${selectedModel.label} — ${selectedModel.credits} credits`}
               </button>
             </section>
 
@@ -482,7 +600,11 @@ function UIGeneratorPage() {
                     disabled={saving || !!result.id}
                     className="inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-background/25 px-3 py-2.5 text-xs font-bold hover:bg-surface disabled:opacity-60 active:scale-[0.97] transition-all duration-200"
                   >
-                    {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                    {saving ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Save className="h-4 w-4" />
+                    )}
                     {result.id ? "Saved to Library" : saving ? "Saving..." : "Save to Library"}
                   </button>
                   <button
@@ -498,9 +620,13 @@ function UIGeneratorPage() {
                   onChange={(e) => setProjectId(e.target.value)}
                   className="w-full rounded-xl bg-background/25 border border-border/80 px-3 py-2.5 text-sm text-foreground focus:border-primary/60 focus:outline-none"
                 >
-                  {projects.length === 0 && <option value="">No projects — create one first</option>}
+                  {projects.length === 0 && (
+                    <option value="">No projects — create one first</option>
+                  )}
                   {projects.map((p) => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
                   ))}
                 </select>
                 <button
@@ -508,11 +634,16 @@ function UIGeneratorPage() {
                   disabled={inserting || !projectId}
                   className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-secondary to-secondary/80 px-4 py-3 text-sm font-bold text-foreground hover:brightness-110 active:scale-[0.97] transition-all duration-200 disabled:opacity-60 border border-border/60"
                 >
-                  {inserting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                  {inserting ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Send className="w-4 h-4" />
+                  )}
                   {inserting ? "Queueing…" : "Insert into Roblox Studio"}
                 </button>
                 <p className="text-[10.5px] leading-normal text-muted-foreground/80">
-                  Queues {result.actions.length} Studio actions. Open Studio with the plugin connected and run Sync.
+                  Queues {result.actions.length} Studio actions. Open Studio with the plugin
+                  connected and run Sync.
                 </p>
               </section>
             )}
@@ -629,7 +760,8 @@ function UIGeneratorPage() {
                   </div>
                   <h3 className="text-base font-semibold mb-1">Your UI will appear here</h3>
                   <p className="text-sm text-muted-foreground max-w-sm">
-                    Pick a template and style on the left, tweak your colors, then hit Generate to see a live Roblox-style preview.
+                    Pick a template and style on the left, tweak your colors, then hit Generate to
+                    see a live Roblox-style preview.
                   </p>
                 </div>
               ) : tab === "preview" ? (
@@ -671,7 +803,8 @@ function UIGeneratorPage() {
                       </div>
                       <h3 className="text-sm font-semibold mb-1">Render a real image preview</h3>
                       <p className="text-xs text-muted-foreground max-w-xs mb-3">
-                        Use AI to generate a high-fidelity screenshot of this {category} based on your style and colors.
+                        Use AI to generate a high-fidelity screenshot of this {category} based on
+                        your style and colors.
                       </p>
                       <button
                         onClick={generateImage}
@@ -715,10 +848,20 @@ function SectionTitle({ icon: Icon, label }: { icon: any; label: string }) {
   );
 }
 
-function ColorField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+function ColorField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
   return (
     <label className="flex flex-col gap-1 flex-1">
-      <span className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">{label}</span>
+      <span className="text-[9px] font-black uppercase tracking-wider text-muted-foreground">
+        {label}
+      </span>
       <div className="flex items-center gap-1.5 rounded-xl bg-background/25 border border-border/80 px-2 py-1.5 transition-all duration-300 focus-within:border-primary/60 focus-within:ring-2 focus-within:ring-primary/20">
         <div className="relative h-6.5 w-6.5 rounded-lg overflow-hidden border border-border/60 shrink-0">
           <input
@@ -772,7 +915,7 @@ function UILoadingScreen({ styleName, categoryName }: UILoadingScreenProps) {
 
       const newIdx = Math.min(
         statuses.length - 1,
-        Math.floor((computedProgress / 100) * statuses.length)
+        Math.floor((computedProgress / 100) * statuses.length),
       );
       setStatusIdx(newIdx);
     }, updateInterval);
@@ -816,7 +959,8 @@ function UILoadingScreen({ styleName, categoryName }: UILoadingScreenProps) {
         </div>
 
         <p className="text-[11px] text-muted-foreground/80 max-w-xs">
-          BloxSmith is building and styling a <strong>{styleName}</strong> themed <strong>{categoryName}</strong>. Once complete, it will render in the preview frame below.
+          BloxSmith is building and styling a <strong>{styleName}</strong> themed{" "}
+          <strong>{categoryName}</strong>. Once complete, it will render in the preview frame below.
         </p>
       </div>
     </div>

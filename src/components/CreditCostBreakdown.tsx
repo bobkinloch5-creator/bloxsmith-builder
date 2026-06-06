@@ -68,8 +68,8 @@ export const FEATURE_COSTS = [
   {
     icon: Palette,
     name: "UI Generator",
-    cost: 5,
-    desc: "Generate custom UI layouts and ScreenGuis",
+    cost: 2,
+    desc: "Model-priced UI generation: 2–15 credits",
     modelMult: false,
   },
   {

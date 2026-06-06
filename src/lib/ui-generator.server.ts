@@ -10,6 +10,8 @@ import {
   sanitizingFetch,
 } from "@/lib/ai-gateway.server";
 import { getNeokensApiKey } from "@/lib/neokens-config.server";
+import { getCometApiKey } from "@/lib/comet-config.server";
+import type { UIGeneratorModel } from "@/lib/ui-generator-models";
 
 function createLovableProvider(apiKey: string) {
   return createOpenAICompatible({
@@ -202,7 +204,6 @@ export const UI_STYLES = [
 ] as const;
 export type UIStyle = (typeof UI_STYLES)[number];
 
-const UI_AI_TIMEOUT_MS = 12_000;
 const UI_AI_OUTPUT_TOKENS = 6_500;
 
 const STYLE_HINTS: Record<UIStyle, string> = {
@@ -420,6 +421,26 @@ function themedBackgroundLayers(opts: {
 
 // ---------------- AI gateway pick (mirrors help-chat) ----------------
 type GatewayChoice = { gw: (m: string) => any; modelName: string; providerName: string };
+
+function selectedGateway(model: UIGeneratorModel): GatewayChoice {
+  if (model.provider === "neokens") {
+    const key = getNeokensApiKey();
+    if (!key) throw new Error(`${model.label} is temporarily unavailable.`);
+    return {
+      gw: createProvider("neokens", key),
+      modelName: model.model,
+      providerName: "neokens",
+    };
+  }
+
+  const key = getCometApiKey();
+  if (!key) throw new Error(`${model.label} is temporarily unavailable.`);
+  return {
+    gw: createProvider("comet", key),
+    modelName: model.model,
+    providerName: "comet",
+  };
+}
 
 function listGateways(): GatewayChoice[] {
   const out: GatewayChoice[] = [];
@@ -1995,13 +2016,17 @@ end)`
 }
 
 async function tryGeneratePlainJson(gateway: GatewayChoice, userPrompt: string): Promise<UISpec> {
+  const premium = /opus|gpt-5\.4/i.test(gateway.modelName);
+  const advanced = /sonnet|codex|reasoning|pro/i.test(gateway.modelName);
+  const timeoutMs = premium ? 36_000 : advanced ? 26_000 : 16_000;
+  const outputTokens = premium ? 8_500 : advanced ? 7_500 : UI_AI_OUTPUT_TOKENS;
   const { text } = await generateText({
     model: gateway.gw(gateway.modelName) as any,
     system: `${UI_SYSTEM_PROMPT}\n\nReturn ONLY parseable JSON. Do not wrap it in markdown.`,
     prompt: userPrompt,
-    maxOutputTokens: UI_AI_OUTPUT_TOKENS,
+    maxOutputTokens: outputTokens,
     maxRetries: 0,
-    abortSignal: AbortSignal.timeout(UI_AI_TIMEOUT_MS),
+    abortSignal: AbortSignal.timeout(timeoutMs),
   });
   if (!text?.trim()) throw new Error("No text returned by provider.");
   return UISpecSchema.parse(parseJsonObject(text));
@@ -2016,9 +2041,10 @@ export async function generateUISpec(opts: {
   accentColor?: { r: number; g: number; b: number };
   bgColor?: { r: number; g: number; b: number };
   title?: string;
+  model?: UIGeneratorModel;
 }): Promise<UISpec> {
   const instantSpec = createFallbackUISpec(opts);
-  const gateways = listGateways();
+  const gateways = opts.model ? [selectedGateway(opts.model)] : listGateways();
   if (gateways.length === 0) {
     console.warn("[ui-gen] no AI provider configured; using deterministic fallback UI");
     return instantSpec;
@@ -2040,6 +2066,11 @@ export async function generateUISpec(opts: {
 
   const userPrompt = `Category: ${opts.category}
 Style: ${opts.style} — ${styleHint}
+Model quality tier: ${opts.model?.tier ?? "Automatic"}${
+    opts.model
+      ? ` — use the extra capability of ${opts.model.label} to improve composition, hierarchy, category-specific details, responsive behavior, and complete Luau interactions.`
+      : ""
+  }
 Palette: ${palette}
 Variation seed: ${stableHash(`${opts.category}|${opts.style}|${opts.prompt}|${opts.title || ""}`) % 997}
 ${opts.title ? `Preferred title text: "${opts.title}"\n` : ""}User request:
@@ -2054,17 +2085,24 @@ If this is a shop, inventory, settings panel, HUD, rewards, quest, or admin GUI,
 ${wantsMainMenuBackground(opts) ? "Main menu background requirement: create the background as ScreenGui children only. Use BackgroundLayer/BackgroundImage plus overlay behind the buttons; do not create or imply Workspace parts, 3D blocks, terrain, or camera-selected objects." : ""}`;
 
   let lastErr: any = null;
-  for (const gateway of gateways.slice(0, 2)) {
+  const attempts = opts.model ? [gateways[0], gateways[0]] : gateways.slice(0, 2);
+  for (const gateway of attempts) {
     try {
       const spec = await tryGeneratePlainJson(gateway, userPrompt);
       return normalizeUISpec(spec, opts);
     } catch (err: any) {
       lastErr = err;
       console.warn(
-        `[ui-gen] ${gateway.providerName}/${gateway.modelName} JSON output failed; trying deterministic fallback:`,
+        `[ui-gen] ${gateway.providerName}/${gateway.modelName} JSON output failed:`,
         err?.message || err,
       );
     }
+  }
+
+  if (opts.model) {
+    throw new Error(
+      `${opts.model.label} did not return a valid UI after retrying. No credits were kept.`,
+    );
   }
 
   console.warn(
