@@ -534,6 +534,7 @@ export function GlobalChat({ inline = false }: { inline?: boolean } = {}) {
   const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
   const [clockTime, setClockTime] = useState(() => formatClock(new Date()));
   const [localMuted, setLocalMuted] = useState<Set<string>>(new Set());
+  const [blockedUsers, setBlockedUsers] = useState<Set<string>>(new Set());
   const [chatBubbles, setChatBubbles] = useState<
     {
       id: string;
@@ -823,7 +824,7 @@ export function GlobalChat({ inline = false }: { inline?: boolean } = {}) {
     (async () => {
       const messageLimit = inline ? 160 : 80;
       const reactionLimit = inline ? 400 : 160;
-      const [msgRes, settingsRes, muteRes, reactRes, wordsRes, warnRes, localMuteRes, chanRes] =
+      const [msgRes, settingsRes, muteRes, reactRes, wordsRes, warnRes, localMuteRes, chanRes, blocksRes] =
         await Promise.all([
           fetchGlobalChatMessages(messageLimit),
           supabase
@@ -854,6 +855,10 @@ export function GlobalChat({ inline = false }: { inline?: boolean } = {}) {
             .from("chat_channels")
             .select("slug,name,description,view_role,post_role,icon,position")
             .order("position"),
+          (supabase as any)
+            .from("user_blocks")
+            .select("blocked_id")
+            .eq("blocker_id", user.id),
         ]);
       if (cancelled) return;
       if (msgRes.error) console.warn("[global-chat] message fetch failed:", msgRes.error);
@@ -869,6 +874,13 @@ export function GlobalChat({ inline = false }: { inline?: boolean } = {}) {
       setWarnings((warnRes.data ?? []) as any);
       setLocalMuted(
         new Set(((localMuteRes.data ?? []) as any[]).map((r) => String(r.muted_user_id))),
+      );
+      setBlockedUsers(
+        new Set(
+          blocksRes && !blocksRes.error
+            ? ((blocksRes.data ?? []) as any[]).map((r) => String(r.blocked_id))
+            : []
+        )
       );
       setChannels(((chanRes as any)?.data ?? []) as Channel[]);
       await loadAuthors(Array.from(new Set(rows.map((r) => r.user_id))));
@@ -1005,6 +1017,54 @@ export function GlobalChat({ inline = false }: { inline?: boolean } = {}) {
         (payload) => {
           const r = payload.old as Reaction;
           setReactions((prev) => prev.filter((x) => x.id !== r.id));
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "user_blocks" },
+        (payload) => {
+          const row = payload.new as { blocker_id: string; blocked_id: string };
+          if (row.blocker_id === user.id) {
+            setBlockedUsers((prev) => new Set([...prev, row.blocked_id]));
+          }
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "user_blocks" },
+        (payload) => {
+          const row = payload.old as { blocker_id: string; blocked_id: string };
+          if (row.blocker_id === user.id) {
+            setBlockedUsers((prev) => {
+              const next = new Set(prev);
+              next.delete(row.blocked_id);
+              return next;
+            });
+          }
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "user_chat_local_mutes" },
+        (payload) => {
+          const row = payload.new as { user_id: string; muted_user_id: string };
+          if (row.user_id === user.id) {
+            setLocalMuted((prev) => new Set([...prev, row.muted_user_id]));
+          }
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "user_chat_local_mutes" },
+        (payload) => {
+          const row = payload.old as { user_id: string; muted_user_id: string };
+          if (row.user_id === user.id) {
+            setLocalMuted((prev) => {
+              const next = new Set(prev);
+              next.delete(row.muted_user_id);
+              return next;
+            });
+          }
         },
       )
       .on("presence", { event: "sync" }, () => {
@@ -2058,9 +2118,12 @@ export function GlobalChat({ inline = false }: { inline?: boolean } = {}) {
       messages.filter((m) => {
         const slug = activeChannel?.slug ?? "general";
         if (m.ephemeralBot) return prefs.show_system && slug === "general";
+        if (m.user_id && (blockedUsers.has(m.user_id) || localMuted.has(m.user_id))) {
+          return false;
+        }
         return (m.channel_id ?? "general") === slug;
       }),
-    [messages, activeChannel?.slug, prefs.show_system],
+    [messages, activeChannel?.slug, prefs.show_system, blockedUsers, localMuted],
   );
   const messagesById = useMemo(
     () => new Map(visibleMessages.map((m) => [m.id, m])),

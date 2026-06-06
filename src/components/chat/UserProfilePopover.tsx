@@ -5,7 +5,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { getRobloxPresence } from "@/lib/roblox-presence.functions";
 import { toast } from "sonner";
 import * as Icons from "lucide-react";
-import { X, UserPlus, UserCheck, UserMinus, MessageCircle, Gamepad2, Hammer, ExternalLink, Loader2, Crown, Heart, HeartOff, Flag, Trophy, Award } from "lucide-react";
+import { X, UserPlus, UserCheck, UserMinus, MessageCircle, Gamepad2, Hammer, ExternalLink, Loader2, Crown, Heart, HeartOff, Flag, Trophy, Award, ShieldOff, ShieldAlert, Eye } from "lucide-react";
 import { ProfileEffect } from "./ProfileEffect";
 import { ProfileBackground } from "@/components/profile/ProfileBackground";
 import { PfpRing } from "@/components/profile/PfpRing";
@@ -75,6 +75,9 @@ export function UserProfilePopover({
   const [followBusy, setFollowBusy] = useState(false);
   const [reporting, setReporting] = useState(false);
   const [reportReason, setReportReason] = useState("");
+  const [isBlocked, setIsBlocked] = useState(false);
+  const [blockBusy, setBlockBusy] = useState(false);
+  const [gameCreations, setGameCreations] = useState<Array<{ id: string; title: string; thumbnail: string | null; likes: number; gameType: string }>>([]);
   const [presence, setPresence] = useState<Awaited<ReturnType<ReturnType<typeof useServerFn<typeof getRobloxPresence>>>> | null>(null);
   const [presenceLoading, setPresenceLoading] = useState(false);
   const [achievements, setAchievements] = useState<Array<{ key: string; name: string; icon: string | null; xp_reward: number | null; unlocked_at: string }>>([]);
@@ -118,20 +121,23 @@ export function UserProfilePopover({
       } else {
         setFriend({ status: "none", requestId: null });
       }
-      // Load follow stats
-      const [{ count: fc }, { data: myFollow }] = await Promise.all([
+      // Load follow stats + block status
+      const [{ count: fc }, { data: myFollow }, { data: myBlock }] = await Promise.all([
         (supabase as any).from("user_follows").select("*", { count: "exact", head: true }).eq("following_id", userId),
         user
           ? (supabase as any).from("user_follows").select("follower_id").eq("follower_id", user.id).eq("following_id", userId).maybeSingle()
+          : Promise.resolve({ data: null }),
+        user
+          ? (supabase as any).from("user_blocks").select("blocker_id").eq("blocker_id", user.id).eq("blocked_id", userId).maybeSingle()
           : Promise.resolve({ data: null }),
       ]);
       if (!cancel) {
         setFollowerCount(fc ?? 0);
         setIsFollowing(!!myFollow);
+        setIsBlocked(!!myBlock);
       }
-      // Load achievements + level (no FK between user_achievements.achievement_key
-      // and achievements.key, so do two queries and merge by key)
-      const [{ data: ua }, { data: lv }, { data: defs }] = await Promise.all([
+      // Load achievements + level + game creations
+      const [{ data: ua }, { data: lv }, { data: defs }, { data: showcaseRows }] = await Promise.all([
         (supabase as any)
           .from("user_achievements")
           .select("achievement_key, unlocked_at")
@@ -140,6 +146,13 @@ export function UserProfilePopover({
           .limit(50),
         (supabase as any).from("user_levels").select("level,xp").eq("user_id", userId).maybeSingle(),
         (supabase as any).from("achievements").select("key,name,icon,xp_reward"),
+        (supabase as any)
+          .from("projects")
+          .select("id,name,showcase_title,showcase_thumbnail_url,showcase_likes_count,game_type")
+          .eq("user_id", userId)
+          .eq("showcase_published", true)
+          .order("showcase_published_at", { ascending: false })
+          .limit(6),
       ]);
       if (!cancel) {
         const defMap = new Map<string, { name: string; icon: string | null; xp_reward: number | null }>();
@@ -158,6 +171,15 @@ export function UserProfilePopover({
         });
         setAchievements(list);
         setLevel(lv ? { level: (lv as any).level ?? 1, xp: (lv as any).xp ?? 0 } : null);
+        setGameCreations(
+          ((showcaseRows ?? []) as any[]).map((p) => ({
+            id: p.id,
+            title: p.showcase_title || p.name,
+            thumbnail: p.showcase_thumbnail_url ?? null,
+            likes: p.showcase_likes_count ?? 0,
+            gameType: p.game_type ?? "Unknown",
+          })),
+        );
       }
 
       setLoading(false);
@@ -240,6 +262,24 @@ export function UserProfilePopover({
     toast.success("Report sent to moderators. Thank you.");
     setReporting(false);
     setReportReason("");
+  }
+  async function toggleBlock() {
+    if (!user || blockBusy) return;
+    setBlockBusy(true);
+    const wasBlocked = isBlocked;
+    setIsBlocked(!wasBlocked);
+    const { error } = await (supabase as any).rpc(wasBlocked ? "unblock_user" : "block_user", { _target: userId });
+    setBlockBusy(false);
+    if (error) {
+      setIsBlocked(wasBlocked);
+      return toast.error(error.message);
+    }
+    if (!wasBlocked) {
+      // Blocking also removes follows + friends on the server side
+      setIsFollowing(false);
+      setFriend({ status: "none", requestId: null });
+    }
+    toast.success(wasBlocked ? "User unblocked" : "User blocked — their messages will be hidden");
   }
 
   const presenceLabel = useMemo(() => {
@@ -453,6 +493,13 @@ export function UserProfilePopover({
                   >
                     <Flag className="h-3.5 w-3.5" /> Report
                   </button>
+                  <button
+                    onClick={toggleBlock}
+                    disabled={blockBusy}
+                    className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition disabled:opacity-50 ${isBlocked ? "border border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20" : "border border-border bg-surface text-muted-foreground hover:bg-destructive/10 hover:text-destructive"}`}
+                  >
+                    {isBlocked ? <><ShieldOff className="h-3.5 w-3.5" /> Unblock</> : <><ShieldAlert className="h-3.5 w-3.5" /> Block</>}
+                  </button>
                 </div>
               )}
 
@@ -536,6 +583,47 @@ export function UserProfilePopover({
                         </p>
                       )}
                     </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Game Creations */}
+              <div className="rounded-xl border border-border bg-background/40 p-3">
+                <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  <Gamepad2 className="h-3 w-3 text-emerald-400" /> Game Creations ({gameCreations.length})
+                </div>
+                {gameCreations.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No published projects yet.</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {gameCreations.map((g) => (
+                      <a
+                        key={g.id}
+                        href={`/showcase/${g.id}`}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        className="flex items-center gap-2.5 rounded-lg border border-border/60 bg-surface/60 px-2.5 py-2 hover:bg-surface-elevated/80 transition-colors"
+                      >
+                        {g.thumbnail ? (
+                          <img src={g.thumbnail} alt="" className="h-10 w-14 rounded-md border border-border/40 object-cover shrink-0" />
+                        ) : (
+                          <div className="grid h-10 w-14 place-items-center rounded-md border border-border/40 bg-surface shrink-0">
+                            <Gamepad2 className="h-4 w-4 text-muted-foreground/60" />
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-xs font-semibold">{g.title}</div>
+                          <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                            <span>{g.gameType}</span>
+                            <span>·</span>
+                            <span className="inline-flex items-center gap-0.5">
+                              <Heart className="h-2.5 w-2.5" /> {g.likes}
+                            </span>
+                          </div>
+                        </div>
+                        <Eye className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
+                      </a>
+                    ))}
                   </div>
                 )}
               </div>

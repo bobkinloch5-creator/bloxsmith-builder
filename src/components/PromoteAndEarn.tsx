@@ -91,7 +91,7 @@ export function PromoteAndEarn() {
         </li>
         <li className="rounded-lg border border-border/50 p-3">
           <div className="text-foreground font-semibold mb-0.5">YouTube video</div>
-          Up to <span className="text-success font-semibold">150 credits</span>
+          Up to <span className="text-success font-semibold">100 credits</span>
         </li>
         <li className="rounded-lg border border-border/50 p-3">
           <div className="text-foreground font-semibold mb-0.5">Viral bonus</div>
