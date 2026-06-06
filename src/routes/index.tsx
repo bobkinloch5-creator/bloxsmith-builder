@@ -459,7 +459,7 @@ function Landing() {
     : fallbackStats;
 
   return (
-    <div className="min-h-screen flex flex-col overflow-x-hidden">
+    <div className="min-h-screen flex flex-col overflow-x-hidden [&>*]:min-w-0 [&>*]:w-full">
       <Header />
 
       <section className="relative overflow-hidden">
