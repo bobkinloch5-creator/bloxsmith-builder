@@ -48,6 +48,55 @@ const tagStyles = {
 
 export const changelogItems = [
   {
+    version: "v3.9.2",
+    date: "June 6, 2026",
+    title: "Self-Repairing Builds, Autopilot Full Games & Docs Sync Fix",
+    description:
+      "Builds now self-repair before they reach Studio, Autopilot ships complete games (UI and world, not just a backbone), and the Roblox Docs index keeps working even when the Lovable AI gateway runs out of credits.",
+    updates: [
+      {
+        category: "AI",
+        tagColor: tagStyles.ai,
+        icon: Wrench,
+        title: "Self-Repairing Builds",
+        detail:
+          "Every build, fix, and Autopilot run now auto-repairs generated Luau before the sync check — missing end/bracket closers are added, misplaced LocalScripts and Scripts are moved to valid services, missing parent folders are created, and casing is normalized — so a script that was only one 'end' short gets healed instead of being silently dropped.",
+      },
+      {
+        category: "AI",
+        tagColor: tagStyles.ai,
+        icon: Rocket,
+        title: "Autopilot Builds Full Games",
+        detail:
+          "Autopilot now builds in two focused passes — the backbone (structure, modules, server systems) first, then the frontend and world (client controllers, UI, map) seeded with a manifest of what the backbone created — so a full game's menus, HUD, and map actually generate instead of getting cut off by the output limit. The frontend pass is best-effort, so the server backbone always ships.",
+      },
+      {
+        category: "Tools",
+        tagColor: tagStyles.tools,
+        icon: Box,
+        title: "Asset Variety Guard",
+        detail:
+          "The pre-push sync check now flags when the same Toolbox assetId is inserted more than once, nudging builds toward varied, richer scenes (an explicit request for duplicates is still honored).",
+      },
+      {
+        category: "Backend",
+        tagColor: tagStyles.backend,
+        icon: Library,
+        title: "Roblox Docs Sync Fallback",
+        detail:
+          "When the Lovable AI gateway is out of credits (HTTP 402) or fails, the Roblox Docs Knowledge sync now falls back through any OpenAI-compatible embedding key you already have — OpenAI, then CometAPI, then Neokens — all on text-embedding-3-small at 1536 dims, so the docs index keeps working without a credit top-up or a new key.",
+      },
+      {
+        category: "UI",
+        tagColor: tagStyles.ui,
+        icon: LayoutDashboard,
+        title: "Streamlined Composer",
+        detail:
+          "Removed the Map mode strip and the Generate Full Map button from the project composer; map mode is now Auto, so the AI picks Toolbox vs. custom per request. The Auto-Arrange Placement tool stays.",
+      },
+    ],
+  },
+  {
     version: "v3.9.1",
     date: "June 2, 2026",
     title: "New AI Models, Video Pricing & Screenshot Builds",

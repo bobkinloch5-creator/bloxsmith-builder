@@ -2,6 +2,14 @@
 
 ## Latest Updates
 
+### Self-Repairing Builds, Autopilot Full Games & Docs Sync Fallback
+
+- Every build, fix, and Autopilot run now auto-repairs generated Luau before the pre-push sync check: missing `end`/bracket closers are added, misplaced LocalScripts/Scripts are reparented to valid services, missing parent folders are created, casing is normalized, and structural actions are sorted parent-before-child — so a script that was only one `end` short is healed instead of dropped (previously these were silently discarded in the main build, fix, and Autopilot paths).
+- Autopilot now builds full games in two focused passes — the backbone (structure, shared modules, server systems) first, then the frontend + world (client controllers, UI, world) seeded with a manifest of everything the backbone created — roughly doubling usable output so the menus, HUD, and map actually generate instead of getting starved by the output-token limit. The frontend pass is best-effort, so the server backbone always ships even if it doesn't finish, and the run is still charged once.
+- The pre-push sync check now flags duplicate Toolbox `assetId` inserts (warning only) to encourage varied, richer scenes; an explicit request for duplicates is still honored.
+- Removed the Map mode strip and the Generate Full Map button from the project composer; map mode now defaults to Auto so the AI picks Toolbox vs. custom per request. The Auto-Arrange Placement tool stays.
+- The Roblox Docs Knowledge sync now falls back through any OpenAI-compatible embedding key you have configured — OpenAI, then CometAPI, then Neokens — when the Lovable AI gateway returns 402 / out of credits or fails. All use `text-embedding-3-small` at 1536 dims (the same vector space), so the docs index keeps working without a Lovable top-up or a new OpenAI key; the error message now lists all three fix paths.
+
 ### AI Models, Video Pricing & Playtest Credits
 
 - Added the `LAUNCH10` launch promo: a copyable header banner advertises 10% bonus credits through June 10, 2026, checkout previews the extra credits, and approved payment requests grant the bonus.
