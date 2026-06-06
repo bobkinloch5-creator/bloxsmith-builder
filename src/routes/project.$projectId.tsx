@@ -1726,6 +1726,40 @@ function ProjectEditor() {
     await runQueuedMessage(queued);
   };
 
+  // One-click placement cleanup: asks the AI to emit repairPlacement actions so
+  // the plugin's Placement Engine grounds, scales, spaces, and tidies every map
+  // object (no floating/overlapping). Build-mode; reuses the real pipeline.
+  const autoArrange = async () => {
+    if (aiUsageBlocked) {
+      toast.error(`Daily AI timer used up. Try again at ${aiUsageResetLabel}.`);
+      return;
+    }
+    const arrangePrompt =
+      "Auto-arrange placement only — do NOT create, delete, or rebuild anything. Emit " +
+      "repairPlacement actions to ground, scale, space, and lay out the existing map cleanly " +
+      "with no floating, sunk, or overlapping parts. At minimum return " +
+      '{"type":"repairPlacement","path":"Workspace/Map","limit":200}, and add the same for ' +
+      "Workspace/City or Workspace if they hold map objects. Make sure a SpawnLocation exists, " +
+      "then finish with a playtest_ready check.";
+    const queued: QueuedMsg = {
+      id:
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `q-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      prompt: arrangePrompt,
+      attachments: [],
+      chatMode: false,
+      planMode: false,
+      webSearch,
+    };
+    if (aiBusy) {
+      setMsgQueue((prev) => [...prev, queued]);
+      toast.message("Queued — will auto-arrange after the current reply.");
+      return;
+    }
+    await runQueuedMessage(queued);
+  };
+
   // Auto-drain the queue when the AI finishes the current request.
   useEffect(() => {
     if (aiBusy) return;
@@ -3165,6 +3199,15 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                       className="mt-1 inline-flex h-9 w-full basis-full items-center justify-center gap-2 rounded-lg bg-primary/90 px-3 text-xs font-bold text-primary-foreground transition hover:bg-primary disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       🗺️ Generate Full Map
+                    </button>
+                    <button
+                      type="button"
+                      onClick={autoArrange}
+                      disabled={aiBusy || aiUsageBlocked}
+                      title="Auto-arrange: ground, scale, space, and tidy every map object so nothing floats or overlaps (undoable)"
+                      className="mt-1 inline-flex h-9 w-full basis-full items-center justify-center gap-2 rounded-lg border border-primary/40 bg-surface/50 px-3 text-xs font-bold text-foreground transition hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      🧭 Auto-Arrange Placement
                     </button>
                   </div>
                 )}
