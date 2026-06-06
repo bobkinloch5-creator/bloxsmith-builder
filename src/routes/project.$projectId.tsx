@@ -1687,6 +1687,45 @@ function ProjectEditor() {
     await runQueuedMessage(queued);
   };
 
+  // One-click full-map build: sends a strong map-generation prompt through the
+  // normal AI build pipeline (Toolbox/custom assets, auto-placed by the plugin)
+  // using the selected Map mode. Any text already in the composer is used as the
+  // map's theme. This reuses the real build flow — no separate or fake path.
+  const generateFullMap = async () => {
+    if (aiUsageBlocked) {
+      toast.error(`Daily AI timer used up. Try again at ${aiUsageResetLabel}.`);
+      return;
+    }
+    const theme = prompt.trim();
+    const mapPrompt =
+      `Generate a COMPLETE, polished, playable Roblox map${theme ? ` for: ${theme}` : ""}. ` +
+      "Build a real game-ready environment, not an empty baseplate: ground/terrain, a clear " +
+      "SpawnLocation, a road or path layout, multiple distinct buildings, props, nature and " +
+      "decorations, themed lighting/atmosphere, and organized folders (Workspace/Map with " +
+      "Roads, Buildings, Props, Nature, plus Workspace/NPCs and Workspace/Interactables where " +
+      "useful). Fill it with varied assets following the selected Map mode, ground and space " +
+      "everything so nothing floats or overlaps, add the SpawnLocation, and finish with a " +
+      "playtest_ready check. Make it look intentional and fun to walk around.";
+    const queued: QueuedMsg = {
+      id:
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `q-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      prompt: mapPrompt,
+      attachments: [],
+      chatMode: false,
+      planMode: false,
+      webSearch,
+    };
+    setPrompt("");
+    if (aiBusy) {
+      setMsgQueue((prev) => [...prev, queued]);
+      toast.message("Queued — your map will build after the current reply.");
+      return;
+    }
+    await runQueuedMessage(queued);
+  };
+
   // Auto-drain the queue when the AI finishes the current request.
   useEffect(() => {
     if (aiBusy) return;
@@ -3118,6 +3157,15 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                         </button>
                       ))}
                     </div>
+                    <button
+                      type="button"
+                      onClick={generateFullMap}
+                      disabled={aiBusy || aiUsageBlocked}
+                      title="Generate a complete, playable map with assets using the selected Map mode. Type a theme (e.g. 'neon city') first to steer it."
+                      className="mt-1 inline-flex h-9 w-full basis-full items-center justify-center gap-2 rounded-lg bg-primary/90 px-3 text-xs font-bold text-primary-foreground transition hover:bg-primary disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      🗺️ Generate Full Map
+                    </button>
                   </div>
                 )}
                 {msgQueue.length > 0 && (
