@@ -156,7 +156,7 @@ function ImageGeneratorPage() {
 
   const [prompt, setPrompt] = useState("");
   const [negativePrompt, setNegativePrompt] = useState("");
-  const [model, setModel] = useState<Model>("comet/nano-banana-2");
+  const [model, setModel] = useState<Model>("comet/gemini-3-pro-image-preview");
   const [aspect, setAspect] = useState<(typeof ASPECTS)[number]>("1:1");
   const [quality, setQuality] = useState<(typeof QUALITIES)[number]>("medium");
   const [variations, setVariations] = useState(1);

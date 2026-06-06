@@ -48,8 +48,8 @@ export type Tripo3DOptions = {
 
 const MODEL_VERSION_BY_QUALITY: Record<string, string> = {
   turbo: "Turbo-v1.0-20250506",
-  standard: "v2.5-20250123",
-  detailed: "v3.0",
+  standard: "v3.0-20250812",
+  detailed: "P1-20260311",
 };
 
 export type Tripo3DResult =

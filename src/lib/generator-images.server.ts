@@ -173,7 +173,7 @@ export async function generateStoredStudioImage(opts: {
 
   const ref = parseDataUrl(opts.referenceImageDataUrl);
 
-  if (opts.model.startsWith("comet/") && !ref) {
+  if (opts.model.startsWith("comet/")) {
     const result = await generateCometStudioImage({
       userId: opts.userId,
       model: opts.model,
