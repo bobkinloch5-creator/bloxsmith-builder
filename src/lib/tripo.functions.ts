@@ -36,6 +36,7 @@ const InputSchema = z.object({
   style: z.string().max(64).optional(),
   rigged: z.boolean().default(false),
   animateInPlace: z.boolean().default(false),
+  provider: z.enum(["tripo", "meshy"]).default("tripo"),
 });
 
 export type Generate3DResult =
