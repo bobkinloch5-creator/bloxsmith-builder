@@ -3,7 +3,15 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { Environment, Html, OrbitControls, Stage, Text, useGLTF } from "@react-three/drei";
+import {
+  Environment,
+  Html,
+  OrbitControls,
+  Stage,
+  Text,
+  useAnimations,
+  useGLTF,
+} from "@react-three/drei";
 import type { Group as ThreeGroup } from "three";
 import { toast } from "sonner";
 import {
@@ -90,6 +98,8 @@ import {
   type Generate3DResult,
   type Diag3DCheck,
 } from "@/lib/tripo.functions";
+import { isMeshyAnimationPreset, MESHY_ANIMATION_PRESETS } from "@/lib/meshy-animation";
+import { MODEL_ANIMATION_PRESETS, MODEL_RIG_TYPES } from "@/lib/tripo-animation";
 
 export const Route = createFileRoute("/generate-3d")({
   component: Generate3DPage,
@@ -109,6 +119,7 @@ type Kind = "model" | "text" | "animation";
 type Project = { id: string; name: string };
 
 const modelTypes = [
+  "auto",
   "pet",
   "character",
   "weapon",
@@ -120,10 +131,13 @@ const modelTypes = [
   "accessory",
   "tool",
 ];
-const styles = ["chunky", "low-poly", "cartoon", "anime", "simulator", "obby", "tycoon", "realistic-lite"];
-const themes = ["neon", "fantasy", "sci-fi", "city", "horror", "cute", "medieval", "pirate", "space", "premium"];
-const materials = ["plastic", "metal", "wood", "stone", "glass", "crystal", "fabric", "neon"];
-const textureLooks = ["clean", "painted", "toy-like", "glossy", "matte", "pixel", "cel-shaded", "worn"];
+const styles = ["auto", "chunky", "low-poly", "cartoon", "anime", "simulator", "obby", "tycoon", "realistic-lite"];
+const themes = ["auto", "neon", "fantasy", "sci-fi", "city", "horror", "cute", "medieval", "pirate", "space", "premium"];
+const materials = ["auto", "plastic", "metal", "wood", "stone", "glass", "crystal", "fabric", "neon"];
+const textureLooks = ["matte", "clean", "painted", "toy-like", "glossy", "pixel", "cel-shaded", "worn"];
+const modelRigTypes = [...MODEL_RIG_TYPES];
+const modelAnimations = [...MODEL_ANIMATION_PRESETS];
+const meshyAnimations = [...MESHY_ANIMATION_PRESETS];
 const animationTypes = ["idle", "walk", "run", "attack", "emote", "dance", "pet", "npc", "tool", "jump"];
 const animationStyles = ["snappy", "smooth", "cartoony", "heroic", "scary", "cute", "robotic", "floaty"];
 const animationEasings = ["sine", "quad", "back", "elastic", "linear"];
@@ -216,7 +230,7 @@ const copy = {
     title: "3D Model",
     kicker: "Tripo 3D generation",
     prompt: "Describe your Roblox-ready model",
-    placeholder: "A chunky neon hover pet with crystal ears, glowing eyes, and a toy-like silhouette",
+    placeholder: "A cluster of sharp blue crystals growing from a rough stone base",
     empty: "Generated models appear here with a live 3D preview.",
   },
   text: {
@@ -236,7 +250,8 @@ const copy = {
 } satisfies Record<Kind, { title: string; kicker: string; prompt: string; placeholder: string; empty: string }>;
 
 function PreviewModel({ url }: { url: string }) {
-  const { scene } = useGLTF(url);
+  const { scene, animations } = useGLTF(url);
+  const { actions } = useAnimations(animations, scene);
   // De-gloss any PBR materials so previews look matte/Roblox-friendly,
   // matching the prompt hint we send to Tripo.
   useEffect(() => {
@@ -251,9 +266,19 @@ function PreviewModel({ url }: { url: string }) {
         if ("sheen" in m) m.sheen = 0;
         m.needsUpdate = true;
       };
-      Array.isArray(mat) ? mat.forEach(apply) : apply(mat);
+      if (Array.isArray(mat)) mat.forEach(apply);
+      else apply(mat);
     });
   }, [scene]);
+  useEffect(() => {
+    const action = Object.values(actions).find(Boolean);
+    if (!action) return;
+    action.reset().fadeIn(0.2).play();
+    return () => {
+      action.fadeOut(0.15);
+      action.stop();
+    };
+  }, [actions]);
   return <primitive object={scene} />;
 }
 
@@ -649,19 +674,22 @@ function Generate3DPage() {
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectId, setProjectId] = useState("");
-  const [modelType, setModelType] = useState("prop");
-  const [robloxStyle, setRobloxStyle] = useState("chunky");
-  const [theme, setTheme] = useState("neon");
-  const [material, setMaterial] = useState("plastic");
-  const [textureLook, setTextureLook] = useState("clean");
+  const [modelType, setModelType] = useState("auto");
+  const [robloxStyle, setRobloxStyle] = useState("auto");
+  const [theme, setTheme] = useState("auto");
+  const [material, setMaterial] = useState("auto");
+  const [textureLook, setTextureLook] = useState("matte");
   const [primaryColor, setPrimaryColor] = useState("#14f195");
   const [secondaryColor, setSecondaryColor] = useState("#0f172a");
-  const [quality, setQuality] = useState<"turbo" | "standard" | "detailed">("turbo");
+  const [useCustomColors, setUseCustomColors] = useState(false);
+  const [quality, setQuality] = useState<"turbo" | "standard" | "detailed">("detailed");
   const [format, setFormat] = useState<"GLB" | "OBJ" | "FBX">("GLB");
   const [provider, setProvider] = useState<"tripo" | "meshy">("tripo");
-  const [faceLimit, setFaceLimit] = useState(10000);
+  const [faceLimit, setFaceLimit] = useState(30000);
   const [texture, setTexture] = useState(true);
   const [rigged, setRigged] = useState(false);
+  const [modelRigType, setModelRigType] = useState("auto");
+  const [modelAnimation, setModelAnimation] = useState("none");
   const [animateInPlace, setAnimateInPlace] = useState(false);
   const [textWords, setTextWords] = useState("BloxSmith");
   const [textFont, setTextFont] = useState("GothamBlack");
@@ -677,7 +705,6 @@ function Generate3DPage() {
   const [animationDuration, setAnimationDuration] = useState(2);
   const [animationLooped, setAnimationLooped] = useState(true);
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [playtestChecks, setPlaytestChecks] = useState(true);
   const selectedAnimationPreset =
     animationQuickPresets.find(
       (preset) =>
@@ -685,31 +712,46 @@ function Generate3DPage() {
         preset.style === animationStyle &&
         preset.focus === animationBodyFocus,
     ) ?? animationQuickPresets.find((preset) => preset.type === animationType);
+  const availableModelRigTypes = provider === "meshy" ? ["biped"] : modelRigTypes;
+  const availableModelAnimations = provider === "meshy" ? meshyAnimations : modelAnimations;
 
   const stageList =
     kind === "model"
-      ? [
+      ? rigged
+        ? [
           "Checking prompt safety",
-          inputMode === "image" ? "Uploading reference image" : "Preparing Tripo request",
-          "Generating 3D mesh",
-          "Converting Roblox export",
-          "Saving permanent download",
-        ]
+            inputMode === "image"
+              ? "Uploading reference image"
+              : `Preparing ${provider === "meshy" ? "Meshy" : "Tripo"} request`,
+            "Generating 3D mesh",
+            "Building skeleton",
+            modelAnimation === "none" ? "Preparing rigged export" : `Applying ${modelAnimation} animation`,
+            "Saving permanent download",
+          ]
+        : [
+          "Checking prompt safety",
+            inputMode === "image"
+              ? "Uploading reference image"
+              : `Preparing ${provider === "meshy" ? "Meshy" : "Tripo"} request`,
+            "Generating 3D mesh",
+            "Converting Roblox export",
+            "Saving permanent download",
+          ]
       : kind === "text"
         ? ["Checking text safety", "Building 3D text package", "Adding motion script", "Saving Studio package"]
         : ["Checking motion prompt", "Writing keyframe plan", "Tuning timing and easing", "Saving animation blueprint"];
 
   const estimatedSeconds =
     kind === "model"
-      ? inputMode === "image"
-        ? quality === "detailed"
-          ? 210
-          : 165
-        : quality === "detailed"
-          ? 180
-          : quality === "standard"
-            ? 135
-            : 95
+      ? (inputMode === "image"
+          ? quality === "detailed"
+            ? 210
+            : 165
+          : quality === "detailed"
+            ? 180
+            : quality === "standard"
+              ? 135
+              : 95) + (rigged ? (modelAnimation === "none" ? 150 : 270) : 0)
       : kind === "text"
         ? 18
         : 22;
@@ -762,9 +804,12 @@ function Generate3DPage() {
     new Date(nextAvailable).getTime() > now;
   const cost = status?.cost ?? (kind === "model" ? 25 : kind === "text" ? 10 : 12);
   const progressEta = Math.max(0, estimatedSeconds - elapsed);
+  const modelAppearanceSummary =
+    [modelType, robloxStyle, theme, material].filter((value) => value !== "auto").join(" / ") ||
+    "Prompt-led / matte";
   const selectedSummary =
     kind === "model"
-      ? `${modelType} / ${robloxStyle} / ${theme} / ${material}`
+      ? `${modelAppearanceSummary}${rigged ? ` / rigged${modelAnimation === "none" ? "" : ` ${modelAnimation}`}` : ""}`
       : kind === "text"
         ? `${textFont} / ${textEffect} / ${textAnimation}`
         : `${animationType} / ${animationStyle} / ${animationBodyFocus}`;
@@ -867,13 +912,10 @@ function Generate3DPage() {
     setLimitMsg(null);
     startProgress();
     try {
-      const playtestHint = playtestChecks
-        ? "\n\nInclude Roblox playtest readiness: collision/import notes, expected Studio test steps, mobile checks, and any safety/performance constraints."
-        : "";
       const out = (await run({
         data: {
           generationKind: kind,
-          prompt: `${prompt.trim()}${playtestHint}`.trim(),
+          prompt: prompt.trim(),
           ...(projectId ? { projectId } : {}),
           inputMode,
           ...(imageDataUrl ? { imageDataUrl } : {}),
@@ -884,6 +926,7 @@ function Generate3DPage() {
           textureLook,
           primaryColor,
           secondaryColor,
+          useCustomColors,
           textWords,
           textFont,
           textEffect,
@@ -902,6 +945,8 @@ function Generate3DPage() {
           faceLimit,
           texture,
           rigged,
+          modelRigType,
+          modelAnimation,
           animateInPlace,
           provider,
         },
@@ -1066,7 +1111,7 @@ function Generate3DPage() {
             active={kind === "model"}
             icon={<Box className="h-4.5 w-4.5" />}
             title="3D Models"
-            text="Tripo-generated meshes with Roblox export settings."
+            text="AI-generated meshes with Roblox export, rigging, and animation settings."
             onClick={() => setKind("model")}
           />
           <ModeCard
@@ -1090,7 +1135,11 @@ function Generate3DPage() {
             <div>
               <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-border/60 pb-4">
                 <div>
-                  <div className="text-[10px] font-black uppercase tracking-wider text-primary">{copy[kind].kicker}</div>
+                  <div className="text-[10px] font-black uppercase tracking-wider text-primary">
+                    {kind === "model"
+                      ? `${provider === "meshy" ? "Meshy AI" : "Tripo 3D"} generation`
+                      : copy[kind].kicker}
+                  </div>
                   <h2 className="mt-1 text-xl font-bold tracking-tight">{copy[kind].title} Builder</h2>
                 </div>
                 <div className="rounded-xl border border-border bg-background/45 px-3 py-1.5 text-xs font-bold text-muted-foreground">
@@ -1115,7 +1164,18 @@ function Generate3DPage() {
                       <button
                         key={p}
                         type="button"
-                        onClick={() => setProvider(p)}
+                        onClick={() => {
+                          setProvider(p);
+                          if (p === "meshy" && rigged) {
+                            setModelRigType("biped");
+                            setTexture(true);
+                            if (quality === "turbo") setQuality("standard");
+                            if (!isMeshyAnimationPreset(modelAnimation)) {
+                              setModelAnimation("none");
+                            }
+                            setAnimateInPlace(false);
+                          }
+                        }}
                         disabled={busy}
                         className={`flex-1 rounded-xl border px-3 py-2.5 text-xs font-bold capitalize transition cursor-pointer disabled:opacity-60 ${
                           provider === p
@@ -1130,7 +1190,7 @@ function Generate3DPage() {
                   <p className="mt-1 text-[10px] text-muted-foreground">
                     {provider === "tripo"
                       ? "Tripo: best for stylized props, rigging, and FBX export."
-                      : "Meshy: best for realistic PBR textures (requires MESHY_API_KEY)."}
+                      : "Meshy: realistic textures plus real humanoid rigging and baked animations (requires MESHY_API_KEY)."}
                   </p>
                 </div>
               )}
@@ -1280,23 +1340,6 @@ function Generate3DPage() {
                 </span>
               </div>
 
-              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border/80 bg-background/20 px-3.5 py-3 text-xs hover:border-primary/20 transition duration-200">
-                <input
-                  type="checkbox"
-                  checked={playtestChecks}
-                  onChange={(e) => setPlaytestChecks(e.target.checked)}
-                  className="mt-0.5 h-4.5 w-4.5 accent-emerald-500 rounded cursor-pointer"
-                />
-                <Gamepad2 className="mt-0.5 h-4.5 w-4.5 text-primary shrink-0" />
-                <span>
-                  <span className="block font-bold text-foreground">AI playtest readiness</span>
-                  <span className="mt-0.5 block text-muted-foreground leading-normal">
-                    Adds Roblox import QA, Studio test steps, mobile checks, collision notes, and
-                    performance constraints.
-                  </span>
-                </span>
-              </label>
-
               {advancedOpen && (
                 <>
                   {kind === "model" && (
@@ -1338,10 +1381,22 @@ function Generate3DPage() {
 
                   <Group label="Theme"><VisualChips value={theme} set={setTheme} items={themes} images={themeImages} compact /></Group>
                   <Group label="Material"><VisualChips value={material} set={setMaterial} items={materials} images={materialImages} compact /></Group>
-                  <div className="grid grid-cols-2 gap-2">
-                    <ColorInput label="Primary color" value={primaryColor} onChange={setPrimaryColor} />
-                    <ColorInput label="Secondary color" value={secondaryColor} onChange={setSecondaryColor} />
-                  </div>
+                  {kind === "model" ? (
+                    <>
+                      <Toggle checked={useCustomColors} onChange={setUseCustomColors} label="Override prompt colors" />
+                      {useCustomColors && (
+                        <div className="grid grid-cols-2 gap-2">
+                          <ColorInput label="Primary color" value={primaryColor} onChange={setPrimaryColor} />
+                          <ColorInput label="Secondary color" value={secondaryColor} onChange={setSecondaryColor} />
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      <ColorInput label="Primary color" value={primaryColor} onChange={setPrimaryColor} />
+                      <ColorInput label="Secondary color" value={secondaryColor} onChange={setSecondaryColor} />
+                    </div>
+                  )}
 
                   {kind === "text" && (
                     <>
@@ -1354,7 +1409,24 @@ function Generate3DPage() {
                   {kind === "model" && (
                     <>
                       <Group label="Quality"><VisualChips value={quality} set={(v) => setQuality(v as typeof quality)} items={["turbo", "standard", "detailed"]} images={qualityImages} compact /></Group>
-                      <Group label="Format"><VisualChips value={format} set={(v) => setFormat(v as typeof format)} items={["GLB", "OBJ", "FBX"]} images={formatImages} compact /></Group>
+                      <Group
+                        label="Format"
+                      >
+                        <VisualChips
+                          value={format}
+                          set={(v) => {
+                            if (rigged && v === "OBJ") {
+                              toast.info("Rigged models need GLB or FBX, so FBX was selected.");
+                              setFormat("FBX");
+                              return;
+                            }
+                            setFormat(v as typeof format);
+                          }}
+                          items={["GLB", "OBJ", "FBX"]}
+                          images={formatImages}
+                          compact
+                        />
+                      </Group>
                       <label className="block text-xs font-medium">
                         Polygon budget: {faceLimit.toLocaleString()}
                         <input
@@ -1374,12 +1446,66 @@ function Generate3DPage() {
                           checked={rigged}
                           onChange={(v) => {
                             setRigged(v);
-                            if (v && format === "OBJ") setFormat("FBX");
+                            if (v) {
+                              if (format === "OBJ") setFormat("FBX");
+                              if (provider === "meshy") {
+                                setModelRigType("biped");
+                                setTexture(true);
+                                if (quality === "turbo") setQuality("standard");
+                              }
+                            } else {
+                              setModelAnimation("none");
+                              setAnimateInPlace(false);
+                            }
                           }}
-                          label="Rigged FBX export"
+                          label="Create real skeleton"
                         />
-                        <Toggle checked={animateInPlace} onChange={setAnimateInPlace} label="Animation-ready in place" />
                       </div>
+                      {rigged && (
+                        <div className="space-y-3 rounded-xl border border-primary/25 bg-primary/5 p-3.5">
+                          <div className="flex items-start gap-2 text-xs leading-relaxed text-muted-foreground">
+                            <Bone className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                            <span>
+                              {provider === "meshy"
+                                ? "Meshy rigging supports one textured humanoid biped with clearly separated arms and legs."
+                                : "Best for one complete character or creature with separated limbs."}
+                              {" "}Props such as crystals, weapons, and buildings cannot use a character skeleton.
+                            </span>
+                          </div>
+                          <Group label="Body / rig type">
+                            <Chips
+                              value={modelRigType}
+                              set={setModelRigType}
+                              items={availableModelRigTypes}
+                            />
+                          </Group>
+                          <Group label="Baked animation">
+                            <Chips
+                              value={modelAnimation}
+                              set={(v) => {
+                                setModelAnimation(v);
+                                if (v !== "none" && format === "OBJ") setFormat("FBX");
+                                if (v === "none") setAnimateInPlace(false);
+                              }}
+                              items={availableModelAnimations}
+                            />
+                          </Group>
+                          {modelAnimation !== "none" && provider === "tripo" && (
+                            <Toggle
+                              checked={animateInPlace}
+                              onChange={setAnimateInPlace}
+                              label="Keep animation in place"
+                            />
+                          )}
+                          <p className="text-[10px] leading-relaxed text-muted-foreground">
+                            The download includes the skeleton. Choosing a motion also bakes that
+                            animation into the GLB or FBX so it can be previewed and imported.
+                            {provider === "meshy"
+                              ? " Meshy currently supports humanoid bipeds and does not expose an in-place toggle."
+                              : ""}
+                          </p>
+                        </div>
+                      )}
                     </>
                   )}
                 </>
@@ -1506,6 +1632,19 @@ function Generate3DPage() {
 
             {result && (
               <div className="mt-4 space-y-3">
+                {result.generationKind === "model" && result.settings?.rigged === true && (
+                  <div className="flex flex-wrap gap-2 text-[11px] font-bold">
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-2.5 py-1 text-primary">
+                      <Bone className="h-3.5 w-3.5" /> Real skeleton included
+                    </span>
+                    {typeof result.settings.modelAnimation === "string" &&
+                      result.settings.modelAnimation !== "none" && (
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-400/30 bg-violet-500/10 px-2.5 py-1 text-violet-200">
+                        <Film className="h-3.5 w-3.5" /> {String(result.settings.modelAnimation)} animation
+                      </span>
+                      )}
+                  </div>
+                )}
                 <a
                   href={result.fileUrl}
                   download
@@ -1637,6 +1776,7 @@ function Chips({ value, set, items }: { value: string; set: (v: any) => void; it
           key={item}
           type="button"
           onClick={() => set(item)}
+          aria-pressed={value === item}
           className={`rounded-xl border px-3 py-2 text-xs font-bold transition-all duration-300 cursor-pointer ${
             value === item
               ? "border-primary bg-gradient-to-br from-primary/15 to-primary/5 shadow-sm text-foreground"
@@ -1651,6 +1791,7 @@ function Chips({ value, set, items }: { value: string; set: (v: any) => void; it
 }
 
 const OPTION_ICONS: Record<string, { icon: LucideIcon; gradient: string }> = {
+  auto: { icon: Sparkles, gradient: "from-slate-400/25 via-cyan-500/10 to-transparent" },
   // Model types
   pet: { icon: PawPrint, gradient: "from-pink-500/30 via-fuchsia-500/15 to-transparent" },
   character: { icon: User, gradient: "from-amber-400/30 via-orange-500/15 to-transparent" },

@@ -2,6 +2,8 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
 import { isGeneratorOwner, spendCreditsAfterSuccess } from "./generator-credits.server";
+import { buildModelNegativePrompt, buildModelPrompt } from "./model-prompt";
+import { MODEL_ANIMATION_PRESETS, MODEL_RIG_TYPES } from "./tripo-animation";
 
 const InputSchema = z.object({
   projectId: z.string().uuid().optional(),
@@ -9,13 +11,14 @@ const InputSchema = z.object({
   inputMode: z.enum(["text", "image"]).default("text"),
   prompt: z.string().max(1024).default(""),
   imageDataUrl: z.string().max(11_500_000).optional(),
-  modelType: z.string().max(48).default("prop"),
-  robloxStyle: z.string().max(64).default("classic"),
-  theme: z.string().max(64).default("neon"),
-  material: z.string().max(64).default("plastic"),
-  textureLook: z.string().max(64).default("clean"),
+  modelType: z.string().max(48).default("auto"),
+  robloxStyle: z.string().max(64).default("auto"),
+  theme: z.string().max(64).default("auto"),
+  material: z.string().max(64).default("auto"),
+  textureLook: z.string().max(64).default("matte"),
   primaryColor: z.string().max(24).default("#14f195"),
   secondaryColor: z.string().max(24).default("#0f172a"),
+  useCustomColors: z.boolean().default(false),
   textWords: z.string().max(80).default("BloxSmith"),
   textFont: z.string().max(48).default("GothamBlack"),
   textEffect: z.string().max(48).default("neon"),
@@ -29,12 +32,14 @@ const InputSchema = z.object({
   animationIntensity: z.number().min(0).max(100).default(55),
   animationDuration: z.number().min(0.25).max(30).default(2),
   animationLooped: z.boolean().default(true),
-  quality: z.enum(["turbo", "standard", "detailed"]).default("turbo"),
+  quality: z.enum(["turbo", "standard", "detailed"]).default("detailed"),
   format: z.enum(["GLB", "OBJ", "FBX"]).default("GLB"),
-  faceLimit: z.number().int().min(1000).max(50000).default(10000),
+  faceLimit: z.number().int().min(1000).max(50000).default(30000),
   texture: z.boolean().default(true),
   style: z.string().max(64).optional(),
   rigged: z.boolean().default(false),
+  modelRigType: z.enum(MODEL_RIG_TYPES).default("auto"),
+  modelAnimation: z.enum(MODEL_ANIMATION_PRESETS).default("none"),
   animateInPlace: z.boolean().default(false),
   provider: z.enum(["tripo", "meshy"]).default("tripo"),
 });
@@ -74,63 +79,6 @@ function costForKind(kind: "model" | "text" | "animation") {
 function cleanName(value: string, fallback = "BloxSmithAsset") {
   const cleaned = value.replace(/[^A-Za-z0-9]/g, "").slice(0, 40);
   return cleaned || fallback;
-}
-
-// Frontend default control values. When a control is still at its default we
-// treat it as "the user didn't choose this" and DON'T inject it into the
-// prompt, so the user's typed request stays the dominant subject. (Previously
-// every default was force-appended, so "crystals" became a neon teal pet.)
-const MODEL_PROMPT_DEFAULTS = {
-  modelType: "prop",
-  robloxStyle: "chunky",
-  theme: "neon",
-  material: "plastic",
-  primaryColor: "#14f195",
-  secondaryColor: "#0f172a",
-} as const;
-
-function buildModelPrompt(data: z.infer<typeof InputSchema>) {
-  const subject = data.prompt.trim();
-  const base = subject
-    ? `A 3D model of: ${subject}.`
-    : data.inputMode === "image"
-      ? "Recreate the object in the reference image as a clean, simple, Roblox-ready 3D model."
-      : "A simple, clean, Roblox-ready 3D prop.";
-
-  const wantsGloss = data.textureLook === "glossy";
-  const finish = wantsGloss
-    ? "Finish: at most a very subtle satin sheen — never mirror-like, wet, or high-gloss."
-    : "Finish: matte and non-glossy. No shiny highlights, no mirror reflections, no wet or plastic sheen. Use flat, painted-style textures with high roughness and no metalness.";
-
-  // Only controls the user actually changed from their defaults become brief,
-  // clearly-subordinate hints — they refine the look but must never change WHAT
-  // the object is. We deliberately do not inject a hard "model type" or specific
-  // colors when they're at defaults, which is what used to hijack the prompt.
-  const hints: string[] = [];
-  if (data.modelType && data.modelType !== MODEL_PROMPT_DEFAULTS.modelType) hints.push(data.modelType);
-  if (data.robloxStyle && data.robloxStyle !== MODEL_PROMPT_DEFAULTS.robloxStyle)
-    hints.push(`${data.robloxStyle} style`);
-  if (data.theme && data.theme !== MODEL_PROMPT_DEFAULTS.theme) hints.push(`${data.theme} theme`);
-  if (data.material && data.material !== MODEL_PROMPT_DEFAULTS.material)
-    hints.push(`${data.material} material`);
-  const colorChanged =
-    (data.primaryColor && data.primaryColor.toLowerCase() !== MODEL_PROMPT_DEFAULTS.primaryColor) ||
-    (data.secondaryColor &&
-      data.secondaryColor.toLowerCase() !== MODEL_PROMPT_DEFAULTS.secondaryColor);
-  if (colorChanged) hints.push(`main colors near ${data.primaryColor} and ${data.secondaryColor}`);
-
-  const hintLine = hints.length
-    ? `Light style hints (use only if they suit the subject; never change what the object is): ${hints.join(", ")}.`
-    : "";
-
-  return [
-    base,
-    "Make it Roblox-friendly: clean, simple, low-poly with readable shapes, a clear silhouette, and no tiny fragile parts.",
-    finish,
-    hintLine,
-  ]
-    .filter(Boolean)
-    .join(" ");
 }
 
 function build3DTextScript(data: z.infer<typeof InputSchema>) {
@@ -179,8 +127,12 @@ glow.Brightness = ${data.textEffect === "neon" ? "3" : "1"}
 glow.Range = ${data.textEffect === "neon" ? "18" : "10"}
 glow.Parent = base
 
-${data.textAnimation === "none" ? "" : `local tween = TweenService:Create(base, TweenInfo.new(2.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { Position = base.Position + Vector3.new(0, 0.8, 0) })
-tween:Play()`}
+${
+  data.textAnimation === "none"
+    ? ""
+    : `local tween = TweenService:Create(base, TweenInfo.new(2.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { Position = base.Position + Vector3.new(0, 0.8, 0) })
+tween:Play()`
+}
 
 model.PrimaryPart = base
 print("[BloxSmith] Inserted 3D text:", model.Name)
@@ -188,8 +140,12 @@ print("[BloxSmith] Inserted 3D text:", model.Name)
 }
 
 function buildAnimationScript(data: z.infer<typeof InputSchema>) {
-  const animationName = cleanName(`${data.animationType}_${data.animationTarget}`, "BloxSmithAnimation");
-  const prompt = data.prompt.trim().replace(/\n/g, " ").slice(0, 500) || "Generated Roblox animation";
+  const animationName = cleanName(
+    `${data.animationType}_${data.animationTarget}`,
+    "BloxSmithAnimation",
+  );
+  const prompt =
+    data.prompt.trim().replace(/\n/g, " ").slice(0, 500) || "Generated Roblox animation";
   const intensity = Math.max(0, Math.min(100, data.animationIntensity));
   const swing = Math.max(6, Math.round(10 + intensity * 0.55));
   const lift = Math.max(0.04, Number((0.04 + intensity / 420).toFixed(2)));
@@ -310,6 +266,13 @@ export const generate3DModelFn = createServerFn({ method: "POST" })
     const { checkTextSafeFor3D, checkImageSafeFor3D } = await import("./content-safety.server");
 
     const safePrompt = data.prompt.trim();
+    const wantsModelRigging =
+      data.generationKind === "model" && (data.rigged || data.modelAnimation !== "none");
+    const modelPromptInput = {
+      ...data,
+      rigged: wantsModelRigging,
+      rigType: data.modelRigType,
+    };
     if (data.generationKind === "model" && data.inputMode === "text" && safePrompt.length < 3) {
       return { ok: false, error: "Describe the model you want in at least a few words." };
     }
@@ -321,7 +284,7 @@ export const generate3DModelFn = createServerFn({ method: "POST" })
         ? `${data.textWords} ${safePrompt}`
         : data.generationKind === "animation"
           ? `${data.animationType} ${data.animationTarget} ${data.animationStyle} ${data.animationBodyFocus} ${safePrompt}`
-          : buildModelPrompt(data);
+          : buildModelPrompt(modelPromptInput);
     const textSafety = checkTextSafeFor3D(safetyText);
     if (!textSafety.safe) return { ok: false, error: textSafety.reason };
     if (data.generationKind === "model" && data.inputMode === "image" && data.imageDataUrl) {
@@ -390,11 +353,14 @@ export const generate3DModelFn = createServerFn({ method: "POST" })
       textureLook: data.textureLook,
       primaryColor: data.primaryColor,
       secondaryColor: data.secondaryColor,
+      useCustomColors: data.useCustomColors,
       quality: data.quality,
       format: data.format,
       faceLimit: data.faceLimit,
       texture: data.texture,
-      rigged: data.rigged,
+      rigged: wantsModelRigging,
+      modelRigType: data.modelRigType,
+      modelAnimation: data.modelAnimation,
       animateInPlace: data.animateInPlace,
       textWords: data.textWords,
       textFont: data.textFont,
@@ -427,18 +393,26 @@ export const generate3DModelFn = createServerFn({ method: "POST" })
     let studioFilePath: string | null = null;
 
     if (data.generationKind === "model") {
+      const modelPrompt = buildModelPrompt(modelPromptInput);
+      const negativePrompt = buildModelNegativePrompt(modelPromptInput);
+      const usePbr = data.textureLook === "glossy";
       if (data.provider === "meshy") {
         const { generate3DModelMeshy } = await import("./meshy.server");
         const meshyOut = await generate3DModelMeshy({
           userId,
-          prompt: buildModelPrompt(data),
+          prompt: modelPrompt,
+          negativePrompt,
           inputMode: data.inputMode,
           imageDataUrl: data.imageDataUrl ?? null,
           quality: data.quality,
-          format: data.rigged && data.format === "OBJ" ? "FBX" : data.format,
+          format: wantsModelRigging && data.format === "OBJ" ? "FBX" : data.format,
           faceLimit: data.faceLimit,
           texture: data.texture,
+          pbr: usePbr,
           style: data.style ?? null,
+          rigged: wantsModelRigging,
+          rigType: data.modelRigType,
+          animationPreset: data.modelAnimation,
         });
         if (!meshyOut.ok) {
           return { ok: false, error: `${meshyOut.error} (No credits were charged.)` };
@@ -456,20 +430,33 @@ export const generate3DModelFn = createServerFn({ method: "POST" })
       } else {
         result = await generate3DModel({
           userId,
-          prompt: buildModelPrompt(data),
+          prompt: modelPrompt,
+          negativePrompt,
           inputMode: data.inputMode,
           imageDataUrl: data.imageDataUrl ?? null,
           quality: data.quality,
-          format: data.rigged && data.format === "OBJ" ? "FBX" : data.format,
+          format: wantsModelRigging && data.format === "OBJ" ? "FBX" : data.format,
           faceLimit: data.faceLimit,
           texture: data.texture,
+          pbr: usePbr,
           style: data.style ?? null,
-          rigged: data.rigged,
+          rigged: wantsModelRigging,
+          rigType: data.modelRigType,
+          animationPreset: data.modelAnimation,
           animateInPlace: data.animateInPlace,
         });
         // If the primary key failed and a fallback key is configured, retry with
         // it — but cap fallback usage at 3 successful runs per 7 days per user.
-        if (!result.ok && process.env.TRIPO_FALLBACK_API_KEY) {
+        let retryableTripoFailure = false;
+        let primaryTripoError = "";
+        if (!result.ok) {
+          primaryTripoError = result.error;
+          retryableTripoFailure =
+            !/not riggable|complete character or creature|returned no rigged file|returned no animated file/i.test(
+              primaryTripoError,
+            );
+        }
+        if (retryableTripoFailure && process.env.TRIPO_FALLBACK_API_KEY) {
           const since = new Date(Date.now() - WEEKLY_WINDOW_MS).toISOString();
           const { count: fbCount } = await (supabaseAdmin as any)
             .from("model_generations_3d")
@@ -481,19 +468,23 @@ export const generate3DModelFn = createServerFn({ method: "POST" })
           const fallbackUsed = Number(fbCount ?? 0);
           if (fallbackUsed < 3) {
             console.warn(
-              `[generate3DModelFn] primary Tripo failed (${result.error}); retrying with fallback (${fallbackUsed}/3 used).`,
+              `[generate3DModelFn] primary Tripo failed (${primaryTripoError}); retrying with fallback (${fallbackUsed}/3 used).`,
             );
             result = await generate3DModel({
               userId,
-              prompt: buildModelPrompt(data),
+              prompt: modelPrompt,
+              negativePrompt,
               inputMode: data.inputMode,
               imageDataUrl: data.imageDataUrl ?? null,
               quality: data.quality,
-              format: data.rigged && data.format === "OBJ" ? "FBX" : data.format,
+              format: wantsModelRigging && data.format === "OBJ" ? "FBX" : data.format,
               faceLimit: data.faceLimit,
               texture: data.texture,
+              pbr: usePbr,
               style: data.style ?? null,
-              rigged: data.rigged,
+              rigged: wantsModelRigging,
+              rigType: data.modelRigType,
+              animationPreset: data.modelAnimation,
               animateInPlace: data.animateInPlace,
               useFallbackKey: true,
             });
@@ -513,6 +504,8 @@ export const generate3DModelFn = createServerFn({ method: "POST" })
   ModelUrl = ${JSON.stringify(result.fileUrl)},
   PreviewUrl = ${JSON.stringify(result.previewGlbUrl ?? result.fileUrl)},
   Format = ${JSON.stringify(result.format)},
+  Rigged = ${wantsModelRigging},
+  Animation = ${JSON.stringify(data.modelAnimation)},
   ImportTip = "Download this file and import it with Roblox Studio Import 3D.",
 }`;
       studioFilePath = await insertStudioFile(
@@ -528,12 +521,7 @@ export const generate3DModelFn = createServerFn({ method: "POST" })
       studioScript =
         data.generationKind === "text" ? build3DTextScript(data) : buildAnimationScript(data);
       const { storeGeneratedAssetFile } = await import("./tripo3d.server");
-      const stored = await storeGeneratedAssetFile(
-        userId,
-        studioScript,
-        "lua",
-        "text/x-lua",
-      );
+      const stored = await storeGeneratedAssetFile(userId, studioScript, "lua", "text/x-lua");
       studioFilePath = await insertStudioFile(
         supabase,
         userId,
@@ -601,10 +589,7 @@ export const generate3DModelFn = createServerFn({ method: "POST" })
         );
       }
     } catch (recErr) {
-      console.warn(
-        "[generate3DModelFn] recording generation threw:",
-        String(recErr).slice(0, 200),
-      );
+      console.warn("[generate3DModelFn] recording generation threw:", String(recErr).slice(0, 200));
     }
 
     const nextAvailable = new Date(Date.now() + WEEKLY_WINDOW_MS).toISOString();
@@ -618,7 +603,9 @@ export const generate3DModelFn = createServerFn({ method: "POST" })
       creditsSpent: isOwner ? 0 : generationCost,
       importTip:
         data.generationKind === "model"
-          ? "Download the file, then in Roblox Studio open the 3D Importer (Avatar tab -> Import 3D) and select it. The mesh drops into your Workspace ready to position."
+          ? wantsModelRigging
+            ? `Download the ${result.format}, then use Roblox Studio's Avatar -> Import 3D. It includes a real ${data.modelRigType === "auto" ? "auto-detected" : data.modelRigType} skeleton${data.modelAnimation === "none" ? "" : ` with the ${data.modelAnimation} animation baked into the file`}.`
+            : "Download the file, then in Roblox Studio open the 3D Importer (Avatar tab -> Import 3D) and select it. The mesh drops into your Workspace ready to position."
           : data.generationKind === "animation"
             ? "Download the Lua ModuleScript, put it in ReplicatedStorage/GeneratedAnimations, recreate the three simple keyframes in Roblox Animation Editor, publish the animation, then paste the uploaded animation id into the included ControllerSnippet."
             : "Download the Lua package or open the selected project in Studio with the BloxSmith plugin to insert this generated Roblox asset.",
@@ -636,7 +623,9 @@ export const generate3DModelFn = createServerFn({ method: "POST" })
 export const get3DStatusFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) =>
-    z.object({ generationKind: z.enum(["model", "text", "animation"]).default("model") }).parse(input ?? {}),
+    z
+      .object({ generationKind: z.enum(["model", "text", "animation"]).default("model") })
+      .parse(input ?? {}),
   )
   .handler(
     async ({
@@ -778,12 +767,8 @@ export const diagnose3DSystemFn = createServerFn({ method: "POST" })
     }
 
     const checks: Diag3DCheck[] = [];
-    const push = (
-      id: string,
-      label: string,
-      status: Diag3DCheck["status"],
-      detail: string,
-    ) => checks.push({ id, label, status, detail });
+    const push = (id: string, label: string, status: Diag3DCheck["status"], detail: string) =>
+      checks.push({ id, label, status, detail });
     const has = (name: string) => Boolean(process.env[name] && String(process.env[name]).trim());
 
     // 1. Provider + moderation keys (presence only — values are never returned).

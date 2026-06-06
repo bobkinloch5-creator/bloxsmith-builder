@@ -16,12 +16,20 @@
 // The API key is read from process.env.TRIPO_API_KEY — never hardcoded.
 
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import {
+  buildTripoAnimationTask,
+  buildTripoRigTask,
+  isModelRigType,
+  type ModelAnimationPreset,
+  type ModelRigType,
+} from "./tripo-animation";
 
 const TRIPO_BASE = "https://api.tripo3d.ai/v2/openapi";
 
 export type Tripo3DOptions = {
   userId: string;
   prompt: string;
+  negativePrompt?: string;
   inputMode?: "text" | "image";
   imageDataUrl?: string | null;
   quality?: "turbo" | "standard" | "detailed";
@@ -29,7 +37,10 @@ export type Tripo3DOptions = {
   faceLimit?: number;
   style?: string | null;
   texture?: boolean;
+  pbr?: boolean;
   rigged?: boolean;
+  rigType?: ModelRigType;
+  animationPreset?: ModelAnimationPreset;
   animateInPlace?: boolean;
   /** When true, use TRIPO_FALLBACK_API_KEY instead of the primary key. */
   useFallbackKey?: boolean;
@@ -106,7 +117,11 @@ async function uploadImage(dataUrl: string, useFallback?: boolean): Promise<stri
   if (!parsed) throw new Error("Upload a PNG, JPG, or WEBP image.");
   const form = new FormData();
   const ext = parsed.mime === "image/png" ? "png" : parsed.mime === "image/webp" ? "webp" : "jpg";
-  form.append("file", new Blob([new Uint8Array(parsed.bytes)], { type: parsed.mime }), `reference.${ext}`);
+  form.append(
+    "file",
+    new Blob([new Uint8Array(parsed.bytes)], { type: parsed.mime }),
+    `reference.${ext}`,
+  );
   const res = await fetch(`${TRIPO_BASE}/upload`, {
     method: "POST",
     headers: bearerHeaders(useFallback),
@@ -146,7 +161,8 @@ async function pollTask(
       return { status, output: data.output ?? {}, progress: 100 };
     }
     if (failed.has(status)) {
-      throw new Error(`Tripo task ${taskId} ${status}.`);
+      const detail = data.error_msg || data.message || data.error_code;
+      throw new Error(`Tripo task ${taskId} ${status}${detail ? `: ${detail}` : "."}`);
     }
     await new Promise((r) => setTimeout(r, interval));
   }
@@ -193,7 +209,11 @@ export async function storeModelFile(
   const buf = Buffer.from(await dl.arrayBuffer());
   const filePath = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
   const contentType =
-    ext === "zip" ? "application/zip" : ext === "glb" ? "model/gltf-binary" : "application/octet-stream";
+    ext === "zip"
+      ? "application/zip"
+      : ext === "glb"
+        ? "model/gltf-binary"
+        : "application/octet-stream";
   await ensureGeneratedModelsBucket();
   const { error: upErr } = await supabaseAdmin.storage
     .from(GENERATED_MODELS_BUCKET)
@@ -242,75 +262,134 @@ export async function generate3DModel(opts: Tripo3DOptions): Promise<Tripo3DResu
             file: { type: "image", file_token: await uploadImage(opts.imageDataUrl, useFallback) },
             prompt: opts.prompt.slice(0, 1024),
             texture: opts.texture !== false,
+            pbr: opts.pbr === true,
+            face_limit: faceLimit,
+            texture_quality: quality === "detailed" ? "detailed" : "standard",
+            auto_size: true,
             enable_image_autofix: true,
           }
         : {
             type: "text_to_model",
             model_version: modelVersion,
             prompt: opts.prompt.slice(0, 1024),
+            negative_prompt: opts.negativePrompt?.slice(0, 255),
             texture: opts.texture !== false,
+            pbr: opts.pbr === true,
+            face_limit: faceLimit,
+            texture_quality: quality === "detailed" ? "detailed" : "standard",
+            auto_size: true,
           };
     if (opts.style) genBody.style = opts.style;
     const genTaskId = await createTask(genBody, useFallback);
     const gen = await pollTask(genTaskId, { timeoutMs: 180_000, useFallback });
     const renderedImageUrl: string | undefined = gen.output?.rendered_image;
 
-    // The base text_to_model output is a GLB — store it for the WebGL preview.
+    // The base text_to_model output is a GLB. Rigging and animation tasks below
+    // replace this URL with their own GLB so the browser can preview the actual
+    // skeleton/animation instead of the original static mesh.
     const rawGlbUrl: string =
       gen.output?.pbr_model || gen.output?.model || gen.output?.base_model || "";
-    let previewGlbUrl: string | undefined;
-    if (rawGlbUrl) {
-      try {
-        const glb = await storeModelFile(opts.userId, rawGlbUrl, "glb");
-        previewGlbUrl = glb.fileUrl;
-      } catch (e) {
-        console.warn("[tripo] preview GLB store failed:", String(e).slice(0, 120));
+    if (!rawGlbUrl) {
+      return { ok: false, error: "Tripo finished but returned no downloadable model." };
+    }
+
+    let finalTaskId = genTaskId;
+    let finalGlbUrl = rawGlbUrl;
+
+    // 2. Real rigging: verify that the mesh can be articulated, then create a
+    // provider skeleton (Mixamo-compatible for explicit bipeds). This is
+    // different from convert_model's with_animation flag, which only preserves
+    // animation that already exists.
+    if (opts.rigged) {
+      const checkTaskId = await createTask(
+        {
+          type: "animate_prerigcheck",
+          original_model_task_id: genTaskId,
+        },
+        useFallback,
+      );
+      const check = await pollTask(checkTaskId, { timeoutMs: 120_000, useFallback });
+      if (check.output?.riggable === false) {
+        return {
+          ok: false,
+          error:
+            "The generated mesh is not riggable. Use one complete character or creature with clearly separated limbs and a neutral pose.",
+        };
+      }
+
+      const requestedRigType = opts.rigType ?? "auto";
+      const detectedRigType = isModelRigType(check.output?.rig_type)
+        ? check.output.rig_type
+        : "auto";
+      const rigType = requestedRigType === "auto" ? detectedRigType : requestedRigType;
+      const rigBody = buildTripoRigTask(genTaskId, rigType);
+      const rigTaskId = await createTask(rigBody, useFallback);
+      const rig = await pollTask(rigTaskId, { timeoutMs: 180_000, useFallback });
+      finalTaskId = rigTaskId;
+      finalGlbUrl = rig.output?.model || rig.output?.pbr_model || rig.output?.base_model || "";
+      if (!finalGlbUrl) {
+        return { ok: false, error: "Tripo rigged the model but returned no rigged file." };
+      }
+
+      if (opts.animationPreset && opts.animationPreset !== "none") {
+        const animationTaskId = await createTask(
+          buildTripoAnimationTask(
+            rigTaskId,
+            opts.animationPreset,
+            rigType,
+            opts.animateInPlace === true,
+          ),
+          useFallback,
+        );
+        const animated = await pollTask(animationTaskId, {
+          timeoutMs: 180_000,
+          useFallback,
+        });
+        finalTaskId = animationTaskId;
+        finalGlbUrl =
+          animated.output?.model || animated.output?.pbr_model || animated.output?.base_model || "";
+        if (!finalGlbUrl) {
+          return { ok: false, error: "Tripo animated the model but returned no animated file." };
+        }
       }
     }
 
-    // 2. If the user wants GLB, the download IS the preview file — done.
+    // Store the final GLB once. For rigged output this is the skeleton/animation
+    // users see in the preview; for normal output it is the generated mesh.
+    const preview = await storeModelFile(opts.userId, finalGlbUrl, "glb");
+    const previewGlbUrl = preview.fileUrl;
+
     if (downloadFormat === "GLB") {
-      if (!previewGlbUrl) {
-        if (!rawGlbUrl)
-          return { ok: false, error: "Tripo finished but returned no downloadable model." };
-        const stored = await storeModelFile(opts.userId, rawGlbUrl, "glb");
-        previewGlbUrl = stored.fileUrl;
-        return {
-          ok: true,
-          fileUrl: stored.fileUrl,
-          filePath: stored.filePath,
-          format: "GLB",
-          previewGlbUrl,
-          tripoTaskId: genTaskId,
-          renderedImageUrl,
-        };
-      }
       return {
         ok: true,
-        fileUrl: previewGlbUrl,
-        filePath: "",
+        fileUrl: preview.fileUrl,
+        filePath: preview.filePath,
         format: "GLB",
         previewGlbUrl,
-        tripoTaskId: genTaskId,
+        tripoTaskId: finalTaskId,
         renderedImageUrl,
       };
     }
 
-    // 3. Otherwise convert to the requested format (OBJ/FBX) for download.
+    // 3. Convert the final task, including its skeleton and baked animation, to
+    // the requested Roblox import format.
     let fileUrl = "";
     let ext = downloadFormat.toLowerCase();
     try {
-      const convTaskId = await createTask({
-        type: "convert_model",
-        format: downloadFormat,
-        original_model_task_id: genTaskId,
-        face_limit: faceLimit,
-        flatten_bottom: true,
-        pivot_to_center_bottom: true,
-        with_animation: opts.rigged === true,
-        animate_in_place: opts.animateInPlace === true,
-        fbx_preset: opts.rigged === true && downloadFormat === "FBX" ? "mixamo" : undefined,
-      }, useFallback);
+      const convTaskId = await createTask(
+        {
+          type: "convert_model",
+          format: downloadFormat,
+          original_model_task_id: finalTaskId,
+          face_limit: faceLimit,
+          flatten_bottom: true,
+          pivot_to_center_bottom: true,
+          with_animation: opts.rigged === true,
+          animate_in_place: opts.animateInPlace === true,
+          fbx_preset: opts.rigged === true && downloadFormat === "FBX" ? "mixamo" : undefined,
+        },
+        useFallback,
+      );
       const conv = await pollTask(convTaskId, { timeoutMs: 150_000, useFallback });
       fileUrl = conv.output?.model || conv.output?.pbr_model || conv.output?.base_model || "";
       ext = "zip"; // OBJ/FBX come packaged with textures
@@ -319,7 +398,7 @@ export async function generate3DModel(opts: Tripo3DOptions): Promise<Tripo3DResu
         "[tripo] conversion failed, falling back to GLB:",
         String(convErr).slice(0, 160),
       );
-      fileUrl = rawGlbUrl;
+      fileUrl = finalGlbUrl;
       ext = "glb";
     }
 
@@ -333,7 +412,7 @@ export async function generate3DModel(opts: Tripo3DOptions): Promise<Tripo3DResu
       filePath: stored.filePath,
       format: ext === "glb" ? "GLB" : downloadFormat,
       previewGlbUrl,
-      tripoTaskId: genTaskId,
+      tripoTaskId: finalTaskId,
       renderedImageUrl,
     };
   } catch (err: any) {
