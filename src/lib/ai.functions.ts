@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { getNeokensApiKey } from "@/lib/neokens-config.server";
 import { stripModelReasoning, looksLikeModelReasoning } from "@/lib/utils";
+import { extractBuildJson } from "@/lib/build-json";
 import { z } from "zod";
 
 const InputSchema = z.object({
@@ -27,43 +28,10 @@ type GenFile = {
 
 type GenAction = { type: string; [k: string]: any };
 
-// Robust extraction of the build JSON from a model's raw text. Handles
-// markdown code fences, a leading sentence before the JSON, trailing commas,
-// and raw newlines/tabs inside Luau source strings — all common reasons a
-// build came back "empty" even though the model actually produced one.
-function extractBuildJson(
-  raw: string,
-): { message?: string; files?: any[]; actions?: any[] } | null {
-  if (!raw) return null;
-  let text = raw.trim();
-
-  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  if (fence && fence[1] && fence[1].includes("{")) text = fence[1].trim();
-
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start === -1 || end === -1 || start >= end) return null;
-  const slice = text.slice(start, end + 1);
-
-  const attempts = [
-    slice,
-    slice.replace(/,\s*([}\]])/g, "$1"),
-    slice
-      .replace(/,\s*([}\]])/g, "$1")
-      .replace(/"(?:[^"\\]|\\.)*"/g, (m) =>
-        m.replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t"),
-      ),
-  ];
-  for (const a of attempts) {
-    try {
-      const obj = JSON.parse(a);
-      if (obj && typeof obj === "object") return obj;
-    } catch {
-      /* try next */
-    }
-  }
-  return null;
-}
+// extractBuildJson now lives in @/lib/build-json (imported above) so it can be
+// unit-tested in isolation and so it can salvage TRUNCATED model output — a
+// nearly-complete build that hit the output-token cap — instead of discarding
+// it and returning a thin/empty result.
 
 // Is this prompt clearly asking to build/edit something (vs a pure question)?
 function isBuildIntent(prompt: string): boolean {

@@ -682,7 +682,9 @@ export function validateGenerated(
     }
 
     if (a.type === "delete") {
-      const deletePath = String(a.path || "").replace(/\//g, ".");
+      const rawDeletePath = String(a.path || "").trim();
+      const normalizedDeletePath = rawDeletePath.replace(/\./g, "/").replace(/^game\//i, "");
+      const deletePath = normalizedDeletePath.replace(/\//g, ".");
       if (!deletePath) {
         errors.push({
           level: "error",
@@ -692,13 +694,23 @@ export function validateGenerated(
         });
         continue;
       }
-      if (deletePath !== "Workspace.Baseplate") {
+      const segments = normalizedDeletePath.split("/").filter(Boolean);
+      const root = rootOf(normalizedDeletePath);
+      if (!VALID_SERVICES.has(root)) {
         errors.push({
           level: "error",
           scope: "security",
           target,
-          message:
-            "delete action blocked to protect existing project work; use additive creates or clearly named new folders instead",
+          message: `delete action must target an object under a real Roblox service (got "${rawDeletePath}")`,
+        });
+        continue;
+      }
+      if (segments.length < 2 || /^(Workspace\/Terrain)$/i.test(normalizedDeletePath)) {
+        errors.push({
+          level: "error",
+          scope: "security",
+          target,
+          message: "delete action blocked for top-level services or broad terrain targets",
         });
         continue;
       }
@@ -706,7 +718,10 @@ export function validateGenerated(
         level: "warning",
         scope: "security",
         target,
-        message: "default Baseplate delete allowed only when replacement ground is included",
+        message:
+          deletePath === "Workspace.Baseplate"
+            ? "default Baseplate delete allowed; make sure replacement ground is included when needed"
+            : "delete action allowed for an exact object path; Studio plugin will ask for confirmation before destroying it",
       });
     }
 

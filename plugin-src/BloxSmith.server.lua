@@ -1973,7 +1973,7 @@ function Actions.set(a)
 					return c
 				end)
 				if ok and created then
-					applyProps(created, a.properties or a.props)
+					applyProps(created, a.properties or a.props or (a.property ~= nil and { [a.property] = a.value } or nil))
 					return true
 				end
 			end
@@ -1981,7 +1981,7 @@ function Actions.set(a)
 		-- Soft-skip so a missing target (e.g. Workspace.Baseplate on empty places) doesn't fail the whole batch
 		return true, "skipped (path not found): " .. tostring(a.path)
 	end
-	applyProps(inst, a.properties or a.props)
+	applyProps(inst, a.properties or a.props or (a.property ~= nil and { [a.property] = a.value } or nil))
 	return true
 end
 
@@ -2001,7 +2001,10 @@ function Actions.delete(a)
 		while not decided do task.wait(0.1) end
 		if not approved then return false, "delete cancelled by user" end
 	end
+	local deletedPath = a.path or instancePath(inst)
 	inst:Destroy()
+	appendLog("Deleted " .. tostring(deletedPath))
+	scheduleSnapshot()
 	return true
 end
 
@@ -2025,7 +2028,7 @@ end
 function Actions.move(a)
 	local inst = resolvePath(a.path, false)
 	if not inst then return true, "skipped (path not found): " .. tostring(a.path) end
-	local parent = resolvePath(a.newParent or a.parent or "Workspace", true)
+	local parent = resolvePath(a.newParent or a.parent or a.to or "Workspace", true)
 	if not parent then return false, "bad newParent" end
 	inst.Parent = parent
 	scheduleSnapshot()
