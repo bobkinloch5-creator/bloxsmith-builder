@@ -643,6 +643,7 @@ function Generate3DPage() {
   const [textureLook, setTextureLook] = useState("clean");
   const [primaryColor, setPrimaryColor] = useState("#14f195");
   const [secondaryColor, setSecondaryColor] = useState("#0f172a");
+  const [provider, setProvider] = useState<"tripo" | "meshy">("tripo");
   const [quality, setQuality] = useState<"turbo" | "standard" | "detailed">("turbo");
   const [format, setFormat] = useState<"GLB" | "OBJ" | "FBX">("GLB");
   const [faceLimit, setFaceLimit] = useState(10000);
@@ -707,13 +708,13 @@ function Generate3DPage() {
 
   useEffect(() => {
     if (!user) return;
-    getStatus({ data: { generationKind: kind } })
+    getStatus({ data: { generationKind: kind, provider } })
       .then((s: any) => {
         setStatus(s);
         setNextAvailable(s.nextAvailable);
       })
       .catch(() => {});
-  }, [user, kind, getStatus]);
+  }, [user, kind, provider, getStatus]);
 
   useEffect(() => {
     if (!user) return;
@@ -847,6 +848,7 @@ function Generate3DPage() {
       const out = (await run({
         data: {
           generationKind: kind,
+          provider,
           prompt: `${prompt.trim()}${playtestHint}`.trim(),
           ...(projectId ? { projectId } : {}),
           inputMode,
@@ -1163,6 +1165,26 @@ function Generate3DPage() {
                       <option key={p.id} value={p.id}>{p.name}</option>
                     ))}
                   </select>
+                </label>
+              )}
+
+              {kind === "model" && (
+                <label className="block text-xs font-bold flex flex-col gap-1.5">
+                  <span className="text-muted-foreground">3D provider</span>
+                  <select
+                    value={provider}
+                    disabled={busy}
+                    onChange={(e) => setProvider(e.target.value as "tripo" | "meshy")}
+                    className="w-full rounded-xl border border-border/80 bg-background/25 px-3 py-2.5 text-xs text-foreground focus:border-primary/60"
+                  >
+                    <option value="tripo">Tripo — fast &amp; reliable (default)</option>
+                    <option value="meshy">Meshy — premium quality (higher credits)</option>
+                  </select>
+                  <span className="text-[11px] font-medium text-muted-foreground">
+                    {provider === "meshy"
+                      ? "Meshy: premium text/image-to-3D. Needs MESHY_API_KEY configured on the server."
+                      : "Tripo: balanced quality and speed for Roblox-ready models."}
+                  </span>
                 </label>
               )}
 

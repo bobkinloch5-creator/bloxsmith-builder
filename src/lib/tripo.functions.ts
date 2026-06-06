@@ -6,6 +6,9 @@ import { isGeneratorOwner, spendCreditsAfterSuccess } from "./generator-credits.
 const InputSchema = z.object({
   projectId: z.string().uuid().optional(),
   generationKind: z.enum(["model", "text", "animation"]).default("model"),
+  // Which 3D backend to use for model generation. Text/animation always run
+  // BloxSmith's own deterministic generators regardless of this value.
+  provider: z.enum(["tripo", "meshy"]).default("tripo"),
   inputMode: z.enum(["text", "image"]).default("text"),
   prompt: z.string().max(1024).default(""),
   imageDataUrl: z.string().max(11_500_000).optional(),
@@ -57,17 +60,20 @@ export type Generate3DResult =
   | { ok: false; error: string; nextAvailable?: string };
 
 // Heavy credit cost — 3D generation is expensive. Owners/admins pay 0.
+// Meshy is a premium 3D backend, so it can carry a higher cost than the
+// default Tripo path. All costs are env-configurable.
 const MODEL_3D_CREDIT_COST = Number(process.env.MODEL_3D_CREDIT_COST || "25");
+const MESHY_3D_CREDIT_COST = Number(process.env.MESHY_3D_CREDIT_COST || "40");
 const TEXT_3D_CREDIT_COST = Number(process.env.TEXT_3D_CREDIT_COST || "10");
 const ANIMATION_3D_CREDIT_COST = Number(process.env.ANIMATION_3D_CREDIT_COST || "12");
 
 // One generation per rolling 7 days per user (owners/admins exempt).
 const WEEKLY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
-function costForKind(kind: "model" | "text" | "animation") {
+function costForKind(kind: "model" | "text" | "animation", provider: "tripo" | "meshy" = "tripo") {
   if (kind === "text") return TEXT_3D_CREDIT_COST;
   if (kind === "animation") return ANIMATION_3D_CREDIT_COST;
-  return MODEL_3D_CREDIT_COST;
+  return provider === "meshy" ? MESHY_3D_CREDIT_COST : MODEL_3D_CREDIT_COST;
 }
 
 function cleanName(value: string, fallback = "BloxSmithAsset") {
@@ -292,7 +298,7 @@ export const generate3DModelFn = createServerFn({ method: "POST" })
     }
 
     const isOwner = await isGeneratorOwner(userId, supabase);
-    const generationCost = costForKind(data.generationKind);
+    const generationCost = costForKind(data.generationKind, data.provider);
 
     // 1. Weekly limit — normal users get one successful 3D Studio run total
     // across text-to-3D, image-to-3D, 3D text, and animations every 7 days.
@@ -344,6 +350,7 @@ export const generate3DModelFn = createServerFn({ method: "POST" })
 
     const settings = {
       generationKind: data.generationKind,
+      provider: data.provider,
       inputMode: data.inputMode,
       modelType: data.modelType,
       robloxStyle: data.robloxStyle,
@@ -389,22 +396,34 @@ export const generate3DModelFn = createServerFn({ method: "POST" })
     let studioFilePath: string | null = null;
 
     if (data.generationKind === "model") {
-      result = await generate3DModel({
+      const modelOpts = {
         userId,
         prompt: buildModelPrompt(data),
         inputMode: data.inputMode,
         imageDataUrl: data.imageDataUrl ?? null,
         quality: data.quality,
-        format: data.rigged && data.format === "OBJ" ? "FBX" : data.format,
+        format: (data.rigged && data.format === "OBJ" ? "FBX" : data.format) as
+          | "GLB"
+          | "OBJ"
+          | "FBX",
         faceLimit: data.faceLimit,
         texture: data.texture,
         style: data.style ?? null,
         rigged: data.rigged,
         animateInPlace: data.animateInPlace,
-      });
-      // If the primary key failed and a fallback key is configured, retry with
-      // it — but cap fallback usage at 3 successful runs per 7 days per user.
-      if (!result.ok && process.env.TRIPO_FALLBACK_API_KEY) {
+      };
+      if (data.provider === "meshy") {
+        const { generateMeshy3DModel } = await import("./meshy.server");
+        result = await generateMeshy3DModel(modelOpts);
+        if (!result.ok) {
+          return { ok: false, error: `${result.error} (No credits were charged.)` };
+        }
+      } else {
+        result = await generate3DModel(modelOpts);
+      }
+      // If the primary Tripo key failed and a fallback key is configured, retry
+      // with it — but cap fallback usage at 3 successful runs per 7 days per user.
+      if (data.provider === "tripo" && !result.ok && process.env.TRIPO_FALLBACK_API_KEY) {
         const since = new Date(Date.now() - WEEKLY_WINDOW_MS).toISOString();
         const { count: fbCount } = await (supabaseAdmin as any)
           .from("model_generations_3d")
@@ -551,7 +570,12 @@ export const generate3DModelFn = createServerFn({ method: "POST" })
 export const get3DStatusFn = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) =>
-    z.object({ generationKind: z.enum(["model", "text", "animation"]).default("model") }).parse(input ?? {}),
+    z
+      .object({
+        generationKind: z.enum(["model", "text", "animation"]).default("model"),
+        provider: z.enum(["tripo", "meshy"]).default("tripo"),
+      })
+      .parse(input ?? {}),
   )
   .handler(
     async ({
@@ -577,7 +601,7 @@ export const get3DStatusFn = createServerFn({ method: "POST" })
       };
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
       const isOwner = await isGeneratorOwner(userId, supabase);
-      const cost = costForKind(data.generationKind);
+      const cost = costForKind(data.generationKind, data.provider);
 
       const { data: profile } = await supabaseAdmin
         .from("profiles")
