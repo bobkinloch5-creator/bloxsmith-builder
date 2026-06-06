@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useServerFn } from "@tanstack/react-start";
 import { generatePluginToken } from "@/lib/projects.functions";
 import { deleteOwnAccount } from "@/lib/account.functions";
+import { GAME_TYPES } from "@/lib/templates";
 import {
   Copy,
   KeyRound,
@@ -148,6 +149,7 @@ function Account() {
 
   const [name, setName] = useState("");
   const [bio, setBio] = useState("");
+  const [favoriteGameTypes, setFavoriteGameTypes] = useState<string[]>([]);
   const [specialization, setSpecialization] = useState("");
   const [txs, setTxs] = useState<Tx[]>([]);
   const [usageEvents, setUsageEvents] = useState<UsageEvent[]>([]);
@@ -257,6 +259,7 @@ function Account() {
       setSpecialization(
         profile.specialization ?? user?.user_metadata?.specialization ?? "General Builder",
       );
+      setFavoriteGameTypes((profile as any).favorite_game_types ?? []);
     }
   }, [profile, user?.user_metadata?.bio, user?.user_metadata?.specialization]);
   useEffect(() => {
@@ -315,6 +318,7 @@ function Account() {
         display_name: displayName,
         bio: bio.trim(),
         specialization,
+        favorite_game_types: favoriteGameTypes,
         updated_at: new Date().toISOString(),
       })
       .eq("id", user.id);
@@ -567,6 +571,38 @@ function Account() {
                       className="w-full rounded-lg bg-surface-elevated border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none"
                       placeholder="Share a short bio about what you specialize in or the projects you're building..."
                     />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-semibold text-muted-foreground">
+                      Favorite Roblox Game Types
+                    </label>
+                    <p className="text-[11px] text-muted-foreground -mt-1">
+                      Pick the types of Roblox games you enjoy — shown on your public profile.
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {GAME_TYPES.filter((g) => g !== "Custom").map((g) => {
+                        const active = favoriteGameTypes.includes(g);
+                        return (
+                          <button
+                            key={g}
+                            type="button"
+                            onClick={() =>
+                              setFavoriteGameTypes((prev) =>
+                                active ? prev.filter((x) => x !== g) : [...prev, g],
+                              )
+                            }
+                            className={`rounded-lg border px-2.5 py-1 text-xs font-medium transition ${
+                              active
+                                ? "border-primary bg-primary/15 text-primary-glow shadow-sm"
+                                : "border-border/60 bg-surface-elevated/40 text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                            }`}
+                          >
+                            {g}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
 
                   <div className="flex items-center justify-between pt-2 gap-3 flex-wrap">

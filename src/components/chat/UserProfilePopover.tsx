@@ -51,6 +51,7 @@ type Profile = {
   current_activity: any;
   profile_badges: string[] | null;
   profile_decoration: string | null;
+  favorite_game_types?: string[] | null;
 };
 
 
@@ -92,7 +93,7 @@ export function UserProfilePopover({
       const [{ data: p }, { data: fr }, { data: roleRows }] = await Promise.all([
         (supabase as any)
           .from("profiles")
-          .select("id,display_name,username,chat_nickname,avatar_url,bio,roblox_user_id,roblox_username,roblox_avatar_url,banner_url,private_profile,profile_accent,profile_card_color,profile_card_effect,profile_effect,profile_background,custom_background_url,pfp_effect,status_message,pronouns,location,presence_enabled,presence_status,last_seen_at,show_activity,current_activity,profile_badges,profile_decoration")
+          .select("id,display_name,username,chat_nickname,avatar_url,bio,roblox_user_id,roblox_username,roblox_avatar_url,banner_url,private_profile,profile_accent,profile_card_color,profile_card_effect,profile_effect,profile_background,custom_background_url,pfp_effect,status_message,pronouns,location,presence_enabled,presence_status,last_seen_at,show_activity,current_activity,profile_badges,profile_decoration,favorite_game_types")
           .eq("id", userId)
           .maybeSingle(),
 
@@ -445,6 +446,18 @@ export function UserProfilePopover({
                   <p className="mt-1 text-xs text-muted-foreground">
                     <MarkdownText text={profile.bio} />
                   </p>
+                )}
+                {profile.favorite_game_types && profile.favorite_game_types.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {profile.favorite_game_types.map((g) => (
+                      <span
+                        key={g}
+                        className="rounded-full border border-primary/20 bg-primary/5 px-2 py-0.5 text-[10px] font-semibold text-primary-glow"
+                      >
+                        {g}
+                      </span>
+                    ))}
+                  </div>
                 )}
               </div>
 

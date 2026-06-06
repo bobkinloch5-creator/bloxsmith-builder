@@ -64,4 +64,12 @@ BEGIN
 END $$;
 GRANT EXECUTE ON FUNCTION public.unblock_user(uuid) TO authenticated;
 
+-- =========================================================================
+-- Favorite game types — users can pick which Roblox genres they enjoy
+-- =========================================================================
+DO $$ BEGIN
+  ALTER TABLE public.profiles ADD COLUMN favorite_game_types text[] DEFAULT '{}';
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
+
 NOTIFY pgrst, 'reload schema';
