@@ -645,6 +645,7 @@ function Generate3DPage() {
   const [secondaryColor, setSecondaryColor] = useState("#0f172a");
   const [quality, setQuality] = useState<"turbo" | "standard" | "detailed">("turbo");
   const [format, setFormat] = useState<"GLB" | "OBJ" | "FBX">("GLB");
+  const [provider, setProvider] = useState<"tripo" | "meshy">("tripo");
   const [faceLimit, setFaceLimit] = useState(10000);
   const [texture, setTexture] = useState(true);
   const [rigged, setRigged] = useState(false);
