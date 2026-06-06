@@ -9,6 +9,7 @@
 - **Block & Unblock UI Controls**: Integrated "Block" and "Unblock" buttons into the public profile popover with instant UI state updates and database triggers.
 - **Global Chat Hiding**: Modified the Global Chat component to automatically filter out messages from both blocked users and locally muted users.
 - **Realtime Safety Updates**: Added realtime Postgres listeners for the `user_blocks` and `user_chat_local_mutes` tables to instantly hide or show messages when blocking/muting actions occur.
+- **Favorite Roblox Game Types**: Added a multi-select genre selector in the Account profile settings page, allowing users to showcase their favorite Roblox game types (such as Simulator, Tycoon, Obby, RPG, etc.) directly on their public profile card.
 - **Tuned Promotion Rewards**: Updated the Promote & Earn component to adjust the maximum reward for YouTube video submissions from 150 credits to 100 credits.
 
 ### Model-Priced UI Generator
