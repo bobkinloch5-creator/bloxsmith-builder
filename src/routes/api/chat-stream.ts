@@ -147,7 +147,18 @@ export const Route = createFileRoute("/api/chat-stream")({
           let upstreamModel: string;
           if (modelCfg.provider === "comet") {
             upstreamUrl = "https://api.cometapi.com/v1/chat/completions";
-            upstreamKey = process.env.COMETAPI_KEY || process.env.COMET_API_KEY;
+            // Prefer the user's personal CometAPI key if saved, else fall back
+            // to the shared site key.
+            let personalKey: string | null = null;
+            try {
+              const { data: pk } = await sb.rpc("get_provider_api_key" as any, {
+                _user_id: userId,
+                _provider: "comet",
+              });
+              if (typeof pk === "string" && pk.trim().length > 0) personalKey = pk.trim();
+            } catch {}
+            upstreamKey =
+              personalKey || process.env.COMETAPI_KEY || process.env.COMET_API_KEY;
             upstreamModel = modelCfg.upstreamId || model;
             if (!upstreamKey) {
               await Promise.resolve(sb.rpc("spend_credits", { _user_id: userId, _amount: -cost, _description: "Refund: CometAPI not configured", _metadata: { model } })).catch(() => {});
