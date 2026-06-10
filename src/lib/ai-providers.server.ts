@@ -14,6 +14,7 @@ import {
   SITE_PROVIDER_DEFAULT_MODEL,
   SITE_PROVIDER_MODELS,
   getModelToolCapabilities,
+  isOwnerOnlyModel,
   resolveCometModel,
   resolveNeokensModel,
 } from "./ai-models";
@@ -437,6 +438,15 @@ export async function resolveAiGateway(opts: {
 
   const provider = settings.provider as ProviderId;
   const rawModel = settings.model || PROVIDER_DEFAULT_MODEL[provider];
+  if (isOwnerOnlyModel(rawModel)) {
+    const { data: ownerRole } = await supabaseAdmin
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", opts.userId)
+      .eq("role", "owner")
+      .maybeSingle();
+    if (!ownerRole) return fallback();
+  }
 
   // BloxSmith AI, Neokens & Groq are site-wide gateways — use env keys, no per-user key.
   if (provider === "neokens" || provider === "comet") {

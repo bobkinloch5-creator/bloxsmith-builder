@@ -1,6 +1,27 @@
 import { useCallback, useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { ExternalLink, Loader2, Package, Plus, Search, ShieldCheck, Copy } from "lucide-react";
+import {
+  Bot,
+  Box,
+  Building2,
+  Car,
+  Copy,
+  ExternalLink,
+  Gamepad2,
+  Gem,
+  Home,
+  Loader2,
+  Map,
+  Mountain,
+  Package,
+  PawPrint,
+  Plus,
+  Search,
+  ShieldCheck,
+  Sparkles,
+  Swords,
+  Trees,
+} from "lucide-react";
 import { toast } from "sonner";
 import { searchToolboxFn } from "@/lib/toolbox.functions";
 import { copyText } from "@/lib/copy";
@@ -17,19 +38,24 @@ const SORT_LABEL: Record<Sort, string> = {
 };
 
 const FILTERS = [
-  { label: "Maps", query: "map kit", category: "Models" },
-  { label: "Buildings", query: "building", category: "Models" },
-  { label: "Weapons", query: "weapon sword", category: "Models" },
-  { label: "Vehicles", query: "vehicle car", category: "Models" },
-  { label: "NPCs", query: "npc character", category: "Models" },
-  { label: "Pets", query: "pet simulator pet", category: "Models" },
-  { label: "UI", query: "gui ui kit", category: "Models" },
-  { label: "Scripts", query: "script system", category: "Models" },
-  { label: "Terrain", query: "terrain nature", category: "Models" },
-  { label: "Decorations", query: "decor props", category: "Models" },
-  { label: "Obbies", query: "obby kit", category: "Models" },
-  { label: "Tycoon", query: "tycoon kit", category: "Models" },
-  { label: "Simulator", query: "simulator asset", category: "Models" },
+  { label: "Maps", query: "roblox map kit", category: "Models", icon: Map },
+  { label: "City", query: "city map buildings road", category: "Models", icon: Building2 },
+  { label: "Buildings", query: "building house shop", category: "Models", icon: Building2 },
+  { label: "Houses", query: "house furniture interior", category: "Models", icon: Home },
+  { label: "Weapons", query: "weapon sword tool", category: "Models", icon: Swords },
+  { label: "Vehicles", query: "vehicle car racing", category: "Models", icon: Car },
+  { label: "NPCs", query: "npc character rig", category: "Models", icon: Bot },
+  { label: "Pets", query: "pet simulator pet", category: "Models", icon: PawPrint },
+  { label: "UI Kits", query: "gui ui kit", category: "Models", icon: Gamepad2 },
+  { label: "Obbies", query: "obby kit checkpoint", category: "Models", icon: Sparkles },
+  { label: "Tycoon", query: "tycoon kit buttons dropper", category: "Models", icon: Box },
+  { label: "Simulator", query: "simulator coins gems pets", category: "Models", icon: Gem },
+  { label: "Decorations", query: "decor props furniture", category: "Models", icon: Package },
+  { label: "Terrain", query: "terrain nature rocks", category: "Models", icon: Mountain },
+  { label: "Trees", query: "trees forest nature", category: "Models", icon: Trees },
+  { label: "Roads", query: "road street sidewalk pack", category: "Models", icon: Map },
+  { label: "Scripts", query: "script system", category: "Models", icon: Gamepad2 },
+  { label: "Decals", query: "roblox icon decal", category: "Decals", icon: Sparkles },
 ] as const;
 
 export type ToolboxPickerAsset = {
@@ -143,7 +169,18 @@ export function ToolboxAssetPicker({
 
   return (
     <div className="space-y-4">
-      <section className="rounded-2xl border border-border bg-surface/35 p-3 sm:p-4 space-y-3">
+      <section className="space-y-3 rounded-2xl border border-border/60 bg-surface/55 p-3 shadow-sm ring-1 ring-white/[0.03] sm:p-4">
+        {onAdd && (
+          <div className="rounded-xl border border-primary/20 bg-primary/5 px-3 py-2">
+            <div className="flex items-start gap-2">
+              <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                Here are some assets I found for your game. Pick which ones you want me to add,
+                then press <span className="font-semibold text-foreground">Add to Game</span>.
+              </p>
+            </div>
+          </div>
+        )}
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap gap-1.5">
             {CATEGORIES.map((c) => (
@@ -151,10 +188,10 @@ export function ToolboxAssetPicker({
                 key={c}
                 type="button"
                 onClick={() => setCat(c)}
-                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
                   cat === c
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-border hover:bg-surface-elevated"
+                    ? "border-primary bg-primary text-primary-foreground shadow-sm shadow-primary/20"
+                    : "border-border/70 bg-background/40 text-muted-foreground hover:bg-surface-elevated hover:text-foreground"
                 }`}
               >
                 {c}
@@ -164,7 +201,7 @@ export function ToolboxAssetPicker({
           <select
             value={sort}
             onChange={(e) => setSort(e.target.value as Sort)}
-            className="rounded-lg border border-border bg-surface px-2 py-1.5 text-xs"
+            className="rounded-lg border border-border/70 bg-background/70 px-2 py-1.5 text-xs text-foreground"
             title="Sort"
           >
             {SORTS.map((s) => (
@@ -175,17 +212,21 @@ export function ToolboxAssetPicker({
           </select>
         </div>
 
-        <div className="flex flex-wrap gap-1.5">
-          {FILTERS.map((filter) => (
-            <button
-              key={filter.label}
-              type="button"
-              onClick={() => void applyFilter(filter)}
-              className="rounded-full border border-border/70 bg-background/40 px-2.5 py-1 text-[11px] text-muted-foreground transition hover:border-primary/40 hover:text-foreground"
-            >
-              {filter.label}
-            </button>
-          ))}
+        <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
+          {FILTERS.map((filter) => {
+            const FilterIcon = filter.icon;
+            return (
+              <button
+                key={filter.label}
+                type="button"
+                onClick={() => void applyFilter(filter)}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border/70 bg-background/50 px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground transition hover:border-primary/40 hover:bg-primary/5 hover:text-foreground"
+              >
+                <FilterIcon className="h-3 w-3" />
+                {filter.label}
+              </button>
+            );
+          })}
         </div>
 
         <div className="flex gap-2">
@@ -196,13 +237,13 @@ export function ToolboxAssetPicker({
               if (e.key === "Enter") onSearch();
             }}
             placeholder={`Search safe free ${cat.toLowerCase()}...`}
-            className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm"
+            className="min-w-0 flex-1 rounded-xl border border-border/70 bg-background/70 px-3 py-2 text-sm outline-none transition focus:border-primary/60 focus:ring-2 focus:ring-primary/10"
           />
           <button
             type="button"
             onClick={onSearch}
             disabled={busy}
-            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20 hover:bg-primary/90 disabled:opacity-50"
           >
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
             Search
@@ -210,7 +251,7 @@ export function ToolboxAssetPicker({
         </div>
         <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
           <ShieldCheck className="h-3.5 w-3.5 text-success" />
-          Free public Roblox-compatible assets only. Risky names are filtered before display.
+          Free public Roblox-compatible assets only. Risky names are filtered before display and the plugin scans selected models.
         </div>
       </section>
 
@@ -228,19 +269,19 @@ export function ToolboxAssetPicker({
 
       <div
         className={`grid gap-3 ${
-          compact ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5"
+          compact ? "grid-cols-1 md:grid-cols-2 xl:grid-cols-3" : "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5"
         }`}
       >
         {results.map((asset) => (
           <div
             key={asset.id}
-            className="group flex min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-surface/35"
+            className="group flex min-w-0 flex-col overflow-hidden rounded-2xl border border-border/60 bg-surface/55 shadow-sm transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg hover:shadow-black/10"
           >
             <a
               href={asset.url}
               target="_blank"
               rel="noreferrer"
-              className="aspect-square overflow-hidden bg-surface-elevated grid place-items-center"
+              className={`${compact ? "h-32" : "aspect-square"} grid place-items-center overflow-hidden bg-surface-elevated`}
             >
               {asset.thumbnail ? (
                 <img
@@ -253,7 +294,7 @@ export function ToolboxAssetPicker({
                 <Package className="h-8 w-8 text-muted-foreground" />
               )}
             </a>
-            <div className="flex flex-1 flex-col gap-1 p-3">
+            <div className="flex flex-1 flex-col gap-1.5 p-3">
               <h3 className="line-clamp-2 text-sm font-semibold" title={asset.name}>
                 {asset.name}
               </h3>
@@ -263,6 +304,9 @@ export function ToolboxAssetPicker({
               <div className="flex flex-wrap gap-1 pt-1">
                 <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary-glow">
                   {asset.assetType || cat}
+                </span>
+                <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-400">
+                  Free public
                 </span>
                 <span className="rounded-full bg-surface-elevated px-2 py-0.5 text-[10px] text-muted-foreground">
                   ID {asset.id}
@@ -279,7 +323,7 @@ export function ToolboxAssetPicker({
                     type="button"
                     onClick={() => void addAsset(asset)}
                     disabled={addingId === asset.id}
-                    className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-md bg-primary px-2 py-1.5 text-xs font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
+                    className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-primary px-2 py-2 text-xs font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
                   >
                     {addingId === asset.id ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -292,7 +336,7 @@ export function ToolboxAssetPicker({
                   <button
                     type="button"
                     onClick={() => void copyText(`rbxassetid://${asset.id}`, "Asset ID copied")}
-                    className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-md bg-secondary px-2 py-1.5 text-xs font-semibold hover:bg-secondary/80"
+                    className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-secondary px-2 py-2 text-xs font-semibold hover:bg-secondary/80"
                   >
                     <Copy className="h-3.5 w-3.5" /> Copy ID
                   </button>
@@ -301,7 +345,7 @@ export function ToolboxAssetPicker({
                   href={asset.url}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center justify-center rounded-md border border-border px-2 py-1.5 text-xs transition hover:bg-surface-elevated"
+                  className="inline-flex items-center justify-center rounded-lg border border-border px-2 py-2 text-xs transition hover:bg-surface-elevated"
                   title="Open on Roblox"
                 >
                   <ExternalLink className="h-3.5 w-3.5" />

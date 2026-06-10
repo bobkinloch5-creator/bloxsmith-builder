@@ -6,6 +6,7 @@ import { ModelPicker } from "@/components/ModelPicker";
 import { useAiBusySounds } from "@/hooks/useSounds";
 import {
   getModelCreditMultiplier,
+  isOwnerOnlyModel,
   SITE_PROVIDER_LABELS,
   type SiteProviderId,
 } from "@/lib/ai-models";
@@ -658,14 +659,21 @@ function ProjectEditor() {
   const currentReasoning = getReasoningLevel(reasoningLevel);
   const estimateCost = (baseCost: number) =>
     isOwner ? 0 : estimateReasoningCredits(baseCost, selectedModelMultiplier, reasoningLevel);
+  const estimateListCost = (baseCost: number) =>
+    estimateReasoningCredits(baseCost, selectedModelMultiplier, reasoningLevel);
   const chatEstimatedCost = estimateCost(CHAT_COST);
   const planEstimatedCost = estimateCost(PLAN_COST);
   const buildEstimatedCost = estimateCost(GENERATE_COST);
+  const chatListCost = estimateListCost(CHAT_COST);
+  const planListCost = estimateListCost(PLAN_COST);
+  const buildListCost = estimateListCost(GENERATE_COST);
   const currentEstimatedCost = chatMode
     ? chatEstimatedCost
     : planMode
       ? planEstimatedCost
       : buildEstimatedCost;
+  const currentListCost = chatMode ? chatListCost : planMode ? planListCost : buildListCost;
+  const selectedModelIsOwnerOnly = isOwnerOnlyModel(aiSettings.model);
   const [aiUsage, setAiUsage] = useState<{
     used_5h: number;
     limit_5h: number;
@@ -1804,11 +1812,13 @@ function ProjectEditor() {
       !chatMode &&
       !planMode &&
       /\b(add|insert|find|use|place|get)\b/i.test(promptText) &&
-      /\b(toolbox|asset|model|free model|creator store|marketplace model)\b/i.test(promptText) &&
+      /\b(toolbox|asset|model|free model|creator store|marketplace model|map|building|house|weapon|vehicle|car|npc|pet|ui kit|obby|tycoon|simulator|decoration|terrain|prop|tool|road|tree|forest|shop)\b/i.test(promptText) &&
       !/\b(?:asset\s*id|assetid|rbxassetid):?\s*\d{4,}|\b\d{7,}\b/i.test(promptText);
     if (wantsUserPickedAsset) {
       setShowToolboxPanel(true);
-      toast.message("Pick the exact Roblox asset you want, then click Add to Game.");
+      toast.message(
+        "Here are some assets I found for your game. Pick which ones you want me to add, then press Add to Game.",
+      );
       return;
     }
     const queued: QueuedMsg = {
@@ -3409,10 +3419,15 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                   </div>
                 )}
                 {showToolboxPanel && (
-                  <div className="mb-2 max-h-[420px] overflow-y-auto rounded-xl border border-border/60 bg-background/50 p-2">
+                  <div className="mb-2 max-h-[440px] overflow-y-auto rounded-2xl border border-border/60 bg-background/70 p-2 shadow-xl shadow-black/20 backdrop-blur">
                     <div className="mb-2 flex items-center justify-between gap-2 px-1">
-                      <div className="text-xs font-semibold text-foreground">
-                        AI-powered Roblox Toolbox
+                      <div>
+                        <div className="text-xs font-semibold text-foreground">
+                          AI-powered Roblox Toolbox
+                        </div>
+                        <p className="mt-0.5 text-[11px] text-muted-foreground">
+                          Here are some assets I found for your game. Pick what you want, then press Add to Game.
+                        </p>
                       </div>
                       <button
                         type="button"
@@ -3956,11 +3971,13 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                 </div>
 
                 <span className="shrink-0 rounded-full border border-border/40 bg-surface-elevated/70 px-2.5 py-1 text-[10px] text-muted-foreground">
-                  {chatMode
-                    ? `est. ${chatEstimatedCost} cr / chat`
-                    : planMode
-                      ? `est. ${planEstimatedCost} cr / plan`
-                      : `est. ${buildEstimatedCost} cr / build`}
+                  {selectedModelIsOwnerOnly && isOwner
+                    ? `Owner Fable · list ${currentListCost} cr · charged 0`
+                    : chatMode
+                      ? `est. ${chatEstimatedCost} cr / chat`
+                      : planMode
+                        ? `est. ${planEstimatedCost} cr / plan`
+                        : `est. ${buildEstimatedCost} cr / build`}
                   {` · ${currentReasoning.shortLabel}`}
                 </span>
               </div>

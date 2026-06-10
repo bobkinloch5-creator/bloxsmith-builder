@@ -3089,6 +3089,12 @@ export const Route = createFileRoute("/execute")({
           const hasInsert = mappedActions.some(
             (a: any) => a?.type === "insert_toolbox_asset" || a?.type === "insertAsset",
           );
+          const wantsStandaloneAssetChoice =
+            /\b(add|insert|find|use|place|get)\b/.test(lowerPrompt) &&
+            /\b(toolbox|asset|model|free model|creator store|marketplace model|map|building|house|weapon|vehicle|car|npc|pet|ui kit|obby|tycoon asset|simulator asset|decoration|terrain|prop|tool|road|tree|forest|shop)\b/.test(
+              lowerPrompt,
+            ) &&
+            !/\b(?:asset\s*id|assetid|rbxassetid):?\s*\d{4,}|\b\d{7,}\b/i.test(prompt);
           if (wantsMap) {
             const hasSpawn = mappedActions.some(
               (a: any) =>
@@ -3113,7 +3119,10 @@ export const Route = createFileRoute("/execute")({
             }
           }
           const shouldAutoPlanToolbox =
-            wantsVisualAssets && !hasInsert && !(selectedMapStrategy === "custom" && wantsMap);
+            wantsVisualAssets &&
+            !hasInsert &&
+            !wantsStandaloneAssetChoice &&
+            !(selectedMapStrategy === "custom" && wantsMap);
           if (shouldAutoPlanToolbox) {
             try {
               const { planRobloxToolboxAssets } = await import("@/lib/ai-tools.server");

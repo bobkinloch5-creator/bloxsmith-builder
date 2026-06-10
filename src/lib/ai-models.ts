@@ -42,7 +42,7 @@ export const SITE_PROVIDER_MODELS: Record<SiteProviderId, string[]> = {
 // for non-owners and rejected server-side. Add ids here to gate new
 // experimental routes to staff/owner only.
 export const OWNER_ONLY_MODELS: ReadonlySet<string> = new Set(["claude-fable-5"]);
-export const COMING_SOON_MODELS: ReadonlySet<string> = new Set(["claude-fable-5"]);
+export const COMING_SOON_MODELS: ReadonlySet<string> = new Set([]);
 
 export function isOwnerOnlyModel(modelId: string | null | undefined): boolean {
   return !!modelId && OWNER_ONLY_MODELS.has(modelId);
@@ -137,7 +137,7 @@ export const SITE_MODEL_DESCRIPTIONS: Record<string, string> = {
   "gemini-3-flash":
     "Fast all-rounder for everyday Roblox scripting: GUIs, RemoteEvents, and small gameplay edits. Cheap and quick. What it does for your game: edits ScreenGuis, adds buttons, wires RemoteEvents, and ships small tweaks in seconds.",
   "claude-fable-5":
-    "Claude Fable 5 is coming soon to BloxSmith. This will be one of our most powerful AI models for advanced reasoning, long project planning, game creation, scripting help, and high-quality agentic work. It is not available yet, but it will be released once funding and setup are complete.",
+    "Owner-only premium model for BloxSmith's hardest Roblox work: advanced reasoning, long project planning, full game architecture, complex scripting help, debugging, and high-quality agentic builds. It is restricted to accounts with the Owner role.",
 };
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -204,7 +204,7 @@ export const MODEL_CREDIT_MULTIPLIERS: Record<string, number> = {
   "gemini-3.1-pro": 2,
   "gemini-3-flash": 1,
   // Owner-only experimental
-  "claude-fable-5": 8,
+  "claude-fable-5": 30,
 };
 
 export const DEFAULT_MODEL_CREDIT_MULTIPLIER = 1;
@@ -450,7 +450,7 @@ export const MODEL_TOOL_CAPABILITIES: Record<
     tools: true,
     webSearch: true,
     thinking: true,
-    label: "Coming soon",
+    label: "Owner-only premium reasoning",
   },
 };
 

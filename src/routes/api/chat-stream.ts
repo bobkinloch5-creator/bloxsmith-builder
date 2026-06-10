@@ -32,7 +32,7 @@ const MODEL_CONFIG: Record<string, { cost: number; provider: Provider; upstreamI
   "gpt-5.4": { cost: 4, provider: "neokens" },
   "gpt-5.5": { cost: 6, provider: "neokens" },
   // Owner-only experimental Comet route
-  "claude-fable-5": { cost: 10, provider: "comet", upstreamId: "claude-fable-5" },
+  "claude-fable-5": { cost: 30, provider: "comet", upstreamId: "claude-fable-5" },
 };
 const ALLOWED_MODELS = new Set(Object.keys(MODEL_CONFIG));
 const OWNER_ONLY_MODELS = new Set<string>(["claude-fable-5"]);

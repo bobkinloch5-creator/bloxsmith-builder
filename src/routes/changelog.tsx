@@ -48,6 +48,55 @@ const tagStyles = {
 
 export const changelogItems = [
   {
+    version: "v3.10.5",
+    date: "June 10, 2026",
+    title: "Owner Fable, Better Toolbox, and Social Profiles",
+    description:
+      "BloxSmith now treats Claude Fable 5 as an owner-level model, makes asset picking more deliberate, and repairs public profile views.",
+    updates: [
+      {
+        category: "AI",
+        tagColor: tagStyles.ai,
+        icon: Bot,
+        title: "Claude Fable 5 Owner Gate",
+        detail:
+          "Claude Fable 5 is restricted to Owner role accounts across the model picker, saved project AI settings, runtime AI gateway resolution, and the legacy chat stream route.",
+      },
+      {
+        category: "Backend",
+        tagColor: tagStyles.backend,
+        icon: CreditCard,
+        title: "Higher Fable Credit Pricing",
+        detail:
+          "Fable now uses the highest premium credit multiplier and the project chat status shows owner list pricing clearly when reasoning levels increase.",
+      },
+      {
+        category: "Tools",
+        tagColor: tagStyles.tools,
+        icon: Box,
+        title: "Fuller Roblox Toolbox Picker",
+        detail:
+          "The Toolbox panel has more Roblox asset categories, clearer thumbnails/cards, free-public safety labels, and exact Add to Game actions so users choose assets before Studio inserts anything.",
+      },
+      {
+        category: "Plugin",
+        tagColor: tagStyles.plugin,
+        icon: Wrench,
+        title: "Selected Asset Metadata",
+        detail:
+          "The Studio plugin now marks inserted Toolbox assets with BloxSmith asset id, asset name, source, and user-selected metadata after safety scanning.",
+      },
+      {
+        category: "UI",
+        tagColor: tagStyles.ui,
+        icon: Users,
+        title: "Public Profile Repair",
+        detail:
+          "Profile popovers now load through a trusted public profile read so creators can view profiles, follow users, see published projects, achievements, roles, and activity without hitting column-level grant errors.",
+      },
+    ],
+  },
+  {
     version: "v3.10.4",
     date: "June 10, 2026",
     title: "Project Chat Composer Polish",

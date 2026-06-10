@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { useServerFn } from "@tanstack/react-start";
 import { getRobloxPresence } from "@/lib/roblox-presence.functions";
+import { getPublicUserProfile } from "@/lib/public-profile.functions";
 import { toast } from "sonner";
 import * as Icons from "lucide-react";
 import { X, UserPlus, UserCheck, UserMinus, MessageCircle, Gamepad2, Hammer, ExternalLink, Loader2, Crown, Heart, HeartOff, Flag, Trophy, Award, ShieldOff, ShieldAlert, Eye } from "lucide-react";
@@ -25,6 +26,7 @@ import { profileHandle } from "@/lib/profile-username";
 
 type Profile = {
   id: string;
+  user_id?: string | null;
   display_name: string | null;
   username: string | null;
   chat_nickname: string | null;
@@ -40,6 +42,7 @@ type Profile = {
   profile_card_effect: string | null;
   profile_effect: string | null;
   profile_background: string | null;
+  custom_background_url?: string | null;
   pfp_effect: string | null;
   status_message: string | null;
   pronouns: string | null;
@@ -83,112 +86,64 @@ export function UserProfilePopover({
   const [presenceLoading, setPresenceLoading] = useState(false);
   const [achievements, setAchievements] = useState<Array<{ key: string; name: string; icon: string | null; xp_reward: number | null; unlocked_at: string }>>([]);
   const [level, setLevel] = useState<{ level: number; xp: number } | null>(null);
-  const isSelf = user?.id === userId;
+  const [targetUserId, setTargetUserId] = useState(userId);
+  const activeUserId = profile?.user_id ?? profile?.id ?? targetUserId;
+  const isSelf = user?.id === activeUserId || user?.id === userId;
   const fetchPresence = useServerFn(getRobloxPresence);
+  const fetchProfile = useServerFn(getPublicUserProfile);
 
   useEffect(() => {
     let cancel = false;
     (async () => {
       setLoading(true);
-      const [{ data: p }, { data: fr }, { data: roleRows }] = await Promise.all([
-        (supabase as any)
-          .from("profiles")
-          .select("id,display_name,username,chat_nickname,avatar_url,bio,roblox_user_id,roblox_username,roblox_avatar_url,banner_url,private_profile,profile_accent,profile_card_color,profile_card_effect,profile_effect,profile_background,custom_background_url,pfp_effect,status_message,pronouns,location,presence_enabled,presence_status,last_seen_at,show_activity,current_activity,profile_badges,profile_decoration,favorite_game_types")
-          .eq("id", userId)
-          .maybeSingle(),
-
-        user
-          ? (supabase as any)
-              .from("friend_requests")
-              .select("id,requester_id,addressee_id,status")
-              .or(
-                `and(requester_id.eq.${user.id},addressee_id.eq.${userId}),and(requester_id.eq.${userId},addressee_id.eq.${user.id})`,
-              )
-              .maybeSingle()
-          : Promise.resolve({ data: null }),
-        (supabase as any).from("user_roles").select("role").eq("user_id", userId),
-      ]);
-      if (cancel) return;
-      setProfile(p as Profile | null);
-      setRoles(((roleRows ?? []) as { role: Role }[]).map((row) => row.role));
-      if (fr) {
-        const status: FriendStatus =
-          fr.status === "accepted"
-            ? "friends"
-            : fr.requester_id === user?.id
-              ? "pending_out"
-              : "pending_in";
-        setFriend({ status, requestId: fr.id });
-      } else {
-        setFriend({ status: "none", requestId: null });
+      try {
+        const profileData = await fetchProfile({ data: { userId } });
+        if (cancel) return;
+        const p = profileData.profile as Profile | null;
+        const resolvedTargetId = profileData.targetUserId ?? p?.user_id ?? p?.id ?? userId;
+        const fr = profileData.friend as any;
+        setTargetUserId(resolvedTargetId);
+        setProfile(p);
+        setRoles((profileData.roles ?? []) as Role[]);
+        if (fr) {
+          const status: FriendStatus =
+            fr.status === "accepted"
+              ? "friends"
+              : fr.requester_id === user?.id
+                ? "pending_out"
+                : "pending_in";
+          setFriend({ status, requestId: fr.id });
+        } else {
+          setFriend({ status: "none", requestId: null });
+        }
+        setFollowerCount(profileData.followerCount ?? 0);
+        setIsFollowing(!!profileData.isFollowing);
+        setIsBlocked(!!profileData.isBlocked);
+        setAchievements(profileData.achievements ?? []);
+        setLevel(profileData.level ?? null);
+        setGameCreations(profileData.gameCreations ?? []);
+      } catch (err) {
+        console.warn("[UserProfilePopover] profile load failed", err);
+        if (!cancel) {
+          setTargetUserId(userId);
+          setProfile(null);
+          setRoles([]);
+          setFriend({ status: "none", requestId: null });
+          setFollowerCount(0);
+          setIsFollowing(false);
+          setIsBlocked(false);
+          setAchievements([]);
+          setLevel(null);
+          setGameCreations([]);
+        }
+      } finally {
+        if (!cancel) setLoading(false);
       }
-      // Load follow stats + block status
-      const [{ count: fc }, { data: myFollow }, { data: myBlock }] = await Promise.all([
-        (supabase as any).from("user_follows").select("*", { count: "exact", head: true }).eq("following_id", userId),
-        user
-          ? (supabase as any).from("user_follows").select("follower_id").eq("follower_id", user.id).eq("following_id", userId).maybeSingle()
-          : Promise.resolve({ data: null }),
-        user
-          ? (supabase as any).from("user_blocks").select("blocker_id").eq("blocker_id", user.id).eq("blocked_id", userId).maybeSingle()
-          : Promise.resolve({ data: null }),
-      ]);
-      if (!cancel) {
-        setFollowerCount(fc ?? 0);
-        setIsFollowing(!!myFollow);
-        setIsBlocked(!!myBlock);
-      }
-      // Load achievements + level + game creations
-      const [{ data: ua }, { data: lv }, { data: defs }, { data: showcaseRows }] = await Promise.all([
-        (supabase as any)
-          .from("user_achievements")
-          .select("achievement_key, unlocked_at")
-          .eq("user_id", userId)
-          .order("unlocked_at", { ascending: false })
-          .limit(50),
-        (supabase as any).from("user_levels").select("level,xp").eq("user_id", userId).maybeSingle(),
-        (supabase as any).from("achievements").select("key,name,icon,xp_reward"),
-        (supabase as any)
-          .from("projects")
-          .select("id,name,showcase_title,showcase_thumbnail_url,showcase_likes_count,game_type")
-          .eq("user_id", userId)
-          .eq("showcase_published", true)
-          .order("showcase_published_at", { ascending: false })
-          .limit(6),
-      ]);
-      if (!cancel) {
-        const defMap = new Map<string, { name: string; icon: string | null; xp_reward: number | null }>();
-        ((defs ?? []) as any[]).forEach((d) =>
-          defMap.set(d.key, { name: d.name, icon: d.icon, xp_reward: d.xp_reward }),
-        );
-        const list = ((ua ?? []) as any[]).map((r) => {
-          const def = defMap.get(r.achievement_key);
-          return {
-            key: r.achievement_key as string,
-            name: def?.name ?? r.achievement_key,
-            icon: def?.icon ?? null,
-            xp_reward: def?.xp_reward ?? null,
-            unlocked_at: r.unlocked_at as string,
-          };
-        });
-        setAchievements(list);
-        setLevel(lv ? { level: (lv as any).level ?? 1, xp: (lv as any).xp ?? 0 } : null);
-        setGameCreations(
-          ((showcaseRows ?? []) as any[]).map((p) => ({
-            id: p.id,
-            title: p.showcase_title || p.name,
-            thumbnail: p.showcase_thumbnail_url ?? null,
-            likes: p.showcase_likes_count ?? 0,
-            gameType: p.game_type ?? "Unknown",
-          })),
-        );
-      }
-
-      setLoading(false);
     })();
     return () => {
       cancel = true;
     };
-  }, [userId, user?.id]);
+  }, [fetchProfile, userId, user?.id]);
 
   useEffect(() => {
     if (!profile?.roblox_user_id) return;
@@ -219,7 +174,7 @@ export function UserProfilePopover({
   );
 
   async function addFriend() {
-    const { error } = await (supabase as any).rpc("send_friend_request", { _target: userId });
+    const { error } = await (supabase as any).rpc("send_friend_request", { _target: activeUserId });
     if (error) return toast.error(error.message);
     toast.success("Friend request sent");
     setFriend((f) => ({ ...f, status: "pending_out" }));
@@ -235,7 +190,7 @@ export function UserProfilePopover({
     toast.success(accept ? "Friend added" : "Request declined");
   }
   async function unfriend() {
-    const { error } = await (supabase as any).rpc("remove_friend", { _other: userId });
+    const { error } = await (supabase as any).rpc("remove_friend", { _other: activeUserId });
     if (error) return toast.error(error.message);
     setFriend({ status: "none", requestId: null });
     toast.success("Friend removed");
@@ -246,7 +201,7 @@ export function UserProfilePopover({
     const wasFollowing = isFollowing;
     setIsFollowing(!wasFollowing);
     setFollowerCount((c) => c + (wasFollowing ? -1 : 1));
-    const { error } = await (supabase as any).rpc(wasFollowing ? "unfollow_user" : "follow_user", { _target: userId });
+    const { error } = await (supabase as any).rpc(wasFollowing ? "unfollow_user" : "follow_user", { _target: activeUserId });
     setFollowBusy(false);
     if (error) {
       setIsFollowing(wasFollowing);
@@ -258,7 +213,7 @@ export function UserProfilePopover({
   async function submitReport() {
     const reason = reportReason.trim();
     if (!reason) return toast.error("Please describe what's wrong");
-    const { error } = await (supabase as any).rpc("report_user", { _target: userId, _reason: reason, _context: null });
+    const { error } = await (supabase as any).rpc("report_user", { _target: activeUserId, _reason: reason, _context: null });
     if (error) return toast.error(error.message);
     toast.success("Report sent to moderators. Thank you.");
     setReporting(false);
@@ -269,7 +224,7 @@ export function UserProfilePopover({
     setBlockBusy(true);
     const wasBlocked = isBlocked;
     setIsBlocked(!wasBlocked);
-    const { error } = await (supabase as any).rpc(wasBlocked ? "unblock_user" : "block_user", { _target: userId });
+    const { error } = await (supabase as any).rpc(wasBlocked ? "unblock_user" : "block_user", { _target: activeUserId });
     setBlockBusy(false);
     if (error) {
       setIsBlocked(wasBlocked);
@@ -485,7 +440,7 @@ export function UserProfilePopover({
                   )}
                   {friend.status === "friends" && (
                     <>
-                      <button onClick={() => onOpenDm?.(userId)} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90">
+                      <button onClick={() => onOpenDm?.(activeUserId)} className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90">
                         <MessageCircle className="h-3.5 w-3.5" /> Message
                       </button>
                       <button onClick={unfriend} className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-surface px-3 py-1.5 text-xs hover:bg-destructive/10 hover:text-destructive">

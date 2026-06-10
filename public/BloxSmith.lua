@@ -57,7 +57,7 @@ local function setApiBase(v) plugin:SetSetting("bs_api_base", v) end
 ----------------------------------------------------------------
 -- Toolbar / widget
 ----------------------------------------------------------------
-local PLUGIN_VERSION = "1.4.1"
+local PLUGIN_VERSION = "1.4.2"
 print(string.format("[BloxSmith] plugin loaded v%s — look for the BloxSmith button in the PLUGINS tab.", PLUGIN_VERSION))
 
 local toolbar = plugin:CreateToolbar("BloxSmith")
@@ -2395,6 +2395,14 @@ function Actions.insert_toolbox_asset(a)
 		end
 	elseif placed then
 		pcall(function() placed:SetAttribute("BloxAutoPlace", true) end)
+	end
+	if placed then
+		pcall(function()
+			placed:SetAttribute("BloxSmithAssetId", assetId)
+			placed:SetAttribute("BloxSmithAssetName", tostring(a.name or model.Name or assetId))
+			placed:SetAttribute("BloxSmithSelectedByUser", a.selectedByUser == true)
+			placed:SetAttribute("BloxSmithAssetSource", tostring(a.source or "toolbox"))
+		end)
 	end
 
 	scheduleSnapshot()

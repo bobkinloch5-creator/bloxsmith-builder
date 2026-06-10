@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
+import { isOwnerOnlyModel } from "@/lib/ai-models";
 
 const ProviderEnum = z.enum(["openai", "anthropic", "google", "groq", "neokens", "comet"]);
 
@@ -55,6 +56,19 @@ async function assertProjectAccess(
   }
 }
 
+async function assertOwnerOnlyModelAccess(supabase: any, userId: string, model: string | null | undefined) {
+  if (!isOwnerOnlyModel(model)) return;
+  const { data } = await supabase
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", userId)
+    .eq("role", "owner")
+    .maybeSingle();
+  if (!data) {
+    throw new Error("Claude Fable 5 is restricted to Owner role accounts.");
+  }
+}
+
 export const getProjectAiConfig = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => GetSchema.parse(input))
@@ -78,6 +92,13 @@ export const getProjectAiConfig = createServerFn({ method: "POST" })
       model: null,
       updated_at: null,
     };
+    if (isOwnerOnlyModel(settings.model)) {
+      try {
+        await assertOwnerOnlyModelAccess(supabase, userId, settings.model);
+      } catch {
+        settings.model = null;
+      }
+    }
     const keys = (keysRes.data ?? []).reduce(
       (acc: Record<string, { label: string | null; updatedAt: string }>, k: any) => {
         acc[k.provider] = { label: k.label, updatedAt: k.updated_at };
@@ -95,6 +116,9 @@ export const saveProjectAiSettings = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
     await assertProjectAccess(supabase, data.projectId, userId, { requireEdit: true });
+    if (data.mode === "api_key") {
+      await assertOwnerOnlyModelAccess(supabase, userId, data.model);
+    }
     const payload = {
       project_id: data.projectId,
       user_id: userId,

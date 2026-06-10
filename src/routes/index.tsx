@@ -256,7 +256,7 @@ const comingSoon = [
   {
     icon: Brain,
     title: "Claude Fable 5",
-    desc: "Claude Fable 5 is coming soon to BloxSmith once funding and setup are complete. It is planned for advanced reasoning, long project planning, game creation, scripting help, and high-quality agentic work.",
+    desc: "Claude Fable 5 is now an Owner-only premium model for advanced reasoning, long project planning, game creation, scripting help, debugging, and high-quality agentic work.",
   },
   {
     icon: Brain,
@@ -548,7 +548,7 @@ function Landing() {
         <div className="mx-auto max-w-7xl px-4 sm:px-6 py-2.5 text-center text-xs sm:text-sm">
           <Sparkles className="inline-block h-4 w-4 mr-1.5 text-primary align-text-bottom" />
           <span className="font-semibold gradient-text-premium">claude-fable-5</span>
-          <span className="text-muted-foreground"> — coming soon for everyone to make amazing games.</span>
+          <span className="text-muted-foreground"> — Owner-only premium reasoning for the hardest BloxSmith builds.</span>
         </div>
       </div>
 
@@ -1257,12 +1257,12 @@ function Landing() {
                 <item.icon className="h-5 w-5 shrink-0 text-primary-glow" />
                 {item.title === "Claude Fable 5" && (
                   <span className="rounded-full border border-amber-400/40 bg-amber-400/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-300">
-                    Coming Soon
+                    Owner Only
                   </span>
                 )}
               </div>
               <h3 className="mt-3 font-semibold text-sm">
-                {item.title === "Claude Fable 5" ? "Claude Fable 5 — Coming Soon" : item.title}
+                {item.title === "Claude Fable 5" ? "Claude Fable 5 — Owner Only" : item.title}
               </h3>
               <p className="mt-1 text-xs text-muted-foreground leading-relaxed">{item.desc}</p>
             </div>

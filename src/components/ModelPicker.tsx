@@ -6,7 +6,6 @@ import { toast } from "sonner";
 import { getSiteModelHealth } from "@/lib/ai-model-health.functions";
 import { saveProjectAiSettings } from "@/lib/project-ai.functions";
 import {
-  COMING_SOON_MODELS,
   SITE_MODEL_DESCRIPTIONS,
   SITE_PROVIDER_LABELS,
   SITE_PROVIDER_MODELS,
@@ -22,10 +21,20 @@ import { useAuth } from "@/lib/auth-context";
 type ProviderId = SiteProviderId;
 type ModelSelection = { provider: ProviderId; model: string };
 
-function normalizeSelection(provider: ProviderId | null, model: string | null): ModelSelection {
+function visibleModelsForProvider(provider: ProviderId, isOwner: boolean) {
+  return SITE_PROVIDER_MODELS[provider].filter((candidate) =>
+    isOwner || !OWNER_ONLY_MODELS.has(candidate),
+  );
+}
+
+function normalizeSelection(
+  provider: ProviderId | null,
+  model: string | null,
+  isOwner = false,
+): ModelSelection {
   const safeProvider: ProviderId =
     provider && provider in SITE_PROVIDER_LABELS ? provider : "neokens";
-  const models = SITE_PROVIDER_MODELS[safeProvider];
+  const models = visibleModelsForProvider(safeProvider, isOwner);
   const safeModel = model && models.includes(model) ? model : models[0];
   return { provider: safeProvider, model: safeModel };
 }
@@ -87,14 +96,18 @@ export function ModelPicker({
 
   useEffect(() => {
     if (provider || model) {
-      setSelected(normalizeSelection(provider, model));
+      const next = normalizeSelection(provider, model, isOwner);
+      setSelected(next);
+      if ((provider || model) && (next.provider !== provider || next.model !== model)) {
+        onChangeRef.current(next.provider, next.model);
+      }
       return;
     }
     const stored = localStorage.getItem(`bloxsmith:model-picker:${projectId}`);
     if (stored) {
       try {
         const parsed = JSON.parse(stored) as Partial<ModelSelection>;
-        const next = normalizeSelection(parsed.provider ?? null, parsed.model ?? null);
+        const next = normalizeSelection(parsed.provider ?? null, parsed.model ?? null, isOwner);
         setSelected(next);
         onChangeRef.current(next.provider, next.model);
         return;
@@ -102,8 +115,8 @@ export function ModelPicker({
         localStorage.removeItem(`bloxsmith:model-picker:${projectId}`);
       }
     }
-    setSelected(normalizeSelection(provider, model));
-  }, [projectId, provider, model]);
+    setSelected(normalizeSelection(provider, model, isOwner));
+  }, [isOwner, projectId, provider, model]);
 
   const currentProvider = selected.provider;
   const currentModel = selected.model;
@@ -111,7 +124,7 @@ export function ModelPicker({
   const currentHealth = getHealth(currentProvider, currentModel);
   const normalizedQuery = query.trim().toLowerCase();
   const modelMatches = (p: ProviderId, m: string) => {
-    if (OWNER_ONLY_MODELS.has(m) && !isOwner && !COMING_SOON_MODELS.has(m)) return false;
+    if (OWNER_ONLY_MODELS.has(m) && !isOwner) return false;
     if (!normalizedQuery) return true;
     const desc = SITE_MODEL_DESCRIPTIONS[m] ?? "";
     const providerLabel = SITE_PROVIDER_LABELS[p];
@@ -142,7 +155,10 @@ export function ModelPicker({
 
   const pick = async (p: ProviderId, m: string) => {
     const modelHealth = getHealth(p, m);
-    if (COMING_SOON_MODELS.has(m)) return;
+    if (OWNER_ONLY_MODELS.has(m) && !isOwner) {
+      toast.error("Claude Fable 5 is restricted to Owner role accounts.");
+      return;
+    }
     // Only block a pick when we have a loaded health record that explicitly
     // says the model is down. If health hasn't loaded yet (undefined) or the
     // query errored, allow selection — a transient/empty health response must
@@ -190,7 +206,7 @@ export function ModelPicker({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center gap-1.5 rounded-full bg-surface-elevated/60 border border-border/40 px-2.5 py-0.5 text-[10px] hover:border-primary/60 transition"
+        className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-surface-elevated/70 border border-border/40 px-2.5 py-1 text-[10px] shadow-sm hover:border-primary/60 hover:bg-surface-elevated transition"
         title={`Choose AI provider and model — ${currentStatusLabel}; current model costs ${currentMult}× credits per generation${currentPricing ? `; ${tokenPriceTitle(currentPricing)}` : ""}`}
       >
         <Cpu className="h-3 w-3 text-primary" />
@@ -198,9 +214,14 @@ export function ModelPicker({
           className={`h-2 w-2 rounded-full ${statusDotClass(currentHealth?.disabled)}`}
           aria-label={currentHealth?.disabled ? "Model down" : "Model available"}
         />
-        <span className="text-muted-foreground">
+        <span className="truncate text-muted-foreground">
           {SITE_PROVIDER_LABELS[currentProvider]} · {shortModel}
         </span>
+        {OWNER_ONLY_MODELS.has(currentModel) && (
+          <span className="rounded-full border border-amber-400/30 bg-amber-400/15 px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-amber-500 dark:text-amber-300">
+            Owner
+          </span>
+        )}
         {currentCaps.webSearch && (
           <span className="rounded-full bg-sky-500/15 px-1.5 py-px text-[9px] font-semibold text-sky-500 dark:text-sky-300">
             Web
@@ -239,15 +260,15 @@ export function ModelPicker({
         <ChevronDown className="h-3 w-3 text-muted-foreground" />
       </button>
       {open && (
-        <div className="absolute bottom-full mb-2 left-0 z-50 w-[24rem] max-h-[28rem] overflow-y-auto rounded-xl border border-border/60 bg-surface-elevated/95 backdrop-blur-xl shadow-2xl p-2">
-          <div className="sticky top-0 z-10 mb-2 rounded-lg border border-border/50 bg-surface-elevated/95 p-1.5 backdrop-blur">
+        <div className="absolute bottom-full left-0 z-50 mb-2 max-h-[32rem] w-[min(44rem,calc(100vw-2rem))] overflow-y-auto rounded-2xl border border-border/70 bg-background/95 p-3 shadow-2xl shadow-black/35 ring-1 ring-white/[0.03] backdrop-blur-xl">
+          <div className="sticky top-0 z-10 mb-3 rounded-xl border border-border/60 bg-surface-elevated/95 p-2 backdrop-blur">
             <div className="flex items-center gap-1.5">
               <Search className="h-3.5 w-3.5 text-muted-foreground" />
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Search models, tools, thinking, price..."
-                className="min-w-0 flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground"
+                className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
                 autoFocus
               />
               {query && (
@@ -266,7 +287,7 @@ export function ModelPicker({
             if (visibleModels.length === 0) return null;
             return (
               <div key={p} className="mb-2">
-                <div className="px-2 py-1 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold flex items-center justify-between">
+                <div className="flex items-center justify-between px-1 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                   <span>{SITE_PROVIDER_LABELS[p]}</span>
                   <span className="text-[9px] normal-case tracking-normal text-muted-foreground/70">
                     cost = base × multiplier
@@ -282,8 +303,8 @@ export function ModelPicker({
                   const modelHealth = getHealth(p, m);
                   // Only block genuinely-down models, and only once health has
                   // actually loaded. While loading or on error, keep selectable.
-                  const comingSoon = COMING_SOON_MODELS.has(m);
-                  const disabled = comingSoon || Boolean(health.isSuccess && modelHealth?.disabled);
+                  const ownerOnly = OWNER_ONLY_MODELS.has(m);
+                  const disabled = Boolean(health.isSuccess && modelHealth?.disabled);
                   const tone =
                     mult >= 4
                       ? "bg-destructive/20 text-destructive"
@@ -297,20 +318,22 @@ export function ModelPicker({
                       disabled={disabled}
                       onClick={() => pick(p, m)}
                       title={
-                        comingSoon
-                          ? "Claude Fable 5 is coming soon and is not available yet."
-                          : modelHealth?.disabled
+                        modelHealth?.disabled
                           ? `${modelHealth.label}. ${modelHealth.detail ?? "This model is temporarily disabled."}`
-                          : undefined
+                          : ownerOnly
+                            ? "Owner-only model. Higher premium credit multiplier."
+                            : undefined
                       }
-                      className={`w-full text-left rounded-md px-2 py-1.5 transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                      className={`mb-1 w-full rounded-xl border px-3 py-2.5 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${
                         active
                           ? modelHealth?.disabled
-                            ? "bg-destructive/10 text-foreground"
-                            : "bg-primary/15 text-foreground"
+                            ? "border-destructive/40 bg-destructive/10 text-foreground"
+                            : "border-primary/45 bg-primary/10 text-foreground shadow-sm"
                           : modelHealth?.disabled
-                            ? "bg-destructive/5"
-                            : "hover:bg-surface/60"
+                            ? "border-destructive/20 bg-destructive/5"
+                            : ownerOnly
+                              ? "border-amber-400/30 bg-amber-400/5 hover:bg-amber-400/10"
+                              : "border-border/55 bg-surface/35 hover:border-primary/30 hover:bg-surface/70"
                       }`}
                     >
                       <div className="flex items-center justify-between gap-2">
@@ -325,9 +348,9 @@ export function ModelPicker({
                             >
                               {m}
                             </span>
-                            {comingSoon && (
-                              <span className="shrink-0 rounded-full border border-amber-400/40 bg-amber-400/15 px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-amber-300">
-                                Coming Soon
+                            {ownerOnly && (
+                              <span className="shrink-0 rounded-full border border-amber-400/40 bg-amber-400/15 px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-amber-500 dark:text-amber-300">
+                                Owner
                               </span>
                             )}
                           </div>
@@ -335,16 +358,12 @@ export function ModelPicker({
                         <div className="flex items-center gap-1.5 shrink-0">
                           <span
                             className={`rounded-full px-1.5 py-px text-[9px] font-semibold ${
-                              comingSoon
-                                ? "bg-amber-400/15 text-amber-300"
-                                : modelHealth?.disabled
+                              modelHealth?.disabled
                                 ? "bg-destructive/15 text-destructive"
                                 : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300"
                             }`}
                           >
-                            {comingSoon
-                              ? "Later"
-                              : modelHealth?.disabled
+                            {modelHealth?.disabled
                                 ? modelHealth.label
                                 : "Online"}
                           </span>
@@ -393,13 +412,13 @@ export function ModelPicker({
                           {desc}
                         </div>
                       )}
-                      {comingSoon && (
-                        <div className="mt-1 rounded-md border border-amber-400/25 bg-amber-400/10 px-2 py-1 text-[10px] leading-snug text-amber-100">
-                          Claude Fable 5 — Coming Soon. It is not available yet and will be
-                          released once funding and setup are complete.
+                      {ownerOnly && (
+                        <div className="mt-2 rounded-lg border border-amber-400/25 bg-amber-400/10 px-2 py-1 text-[10px] leading-snug text-amber-700 dark:text-amber-100">
+                          Owner-only access. Fable uses the highest premium multiplier, so higher
+                          reasoning levels show a much larger estimated list cost.
                         </div>
                       )}
-                      {modelHealth?.disabled && !comingSoon && (
+                      {modelHealth?.disabled && (
                         <div className="mt-0.5 text-[10px] leading-snug text-destructive">
                           {modelHealth.detail ?? "This model is temporarily disabled."}
                         </div>
