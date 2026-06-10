@@ -100,9 +100,16 @@ import {
 } from "@/lib/tripo.functions";
 import { isMeshyAnimationPreset, MESHY_ANIMATION_PRESETS } from "@/lib/meshy-animation";
 import { MODEL_ANIMATION_PRESETS, MODEL_RIG_TYPES } from "@/lib/tripo-animation";
+import { ComingSoonToolPage } from "@/components/ComingSoonToolPage";
 
 export const Route = createFileRoute("/generate-3d")({
-  component: Generate3DPage,
+  component: () => (
+    <ComingSoonToolPage
+      eyebrow="Model generation"
+      title="3D Model Generation Is Coming Soon"
+      description="BloxSmith model generation is being upgraded before it goes live again. AI Chat, Video Generator, and Script Doctor are still available while 3D models, model animation, and asset export workflows are prepared for a cleaner release."
+    />
+  ),
   head: () => ({
     meta: [
       { title: "AI 3D Model Generator for Roblox | BloxSmith" },

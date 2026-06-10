@@ -68,11 +68,11 @@ const NAV_ITEMS: readonly NavItem[] = [
   { to: "/dashboard", label: "Dashboard", authOnly: true },
   { to: "/templates", label: "Templates" },
   { to: "/script-doctor", label: "Script Doctor", authOnly: true },
-  { to: "/clothing", label: "Clothing" },
-  { to: "/image-generator", label: "Images" },
+  { to: "/clothing", label: "Clothing (Soon)" },
+  { to: "/image-generator", label: "Images (Soon)" },
   { to: "/video-generator", label: "Video Generator" },
-  { to: "/generate-3d", label: "3D Model Generator" },
-  { to: "/ui-generator", label: "UI Generator" },
+  { to: "/generate-3d", label: "3D Model Generator (Soon)" },
+  { to: "/ui-generator", label: "UI Generator (Soon)" },
   { to: "/showcase", label: "Showcase" },
   { to: "/browse", label: "Community Chat" },
   { to: "/gallery", label: "Gallery" },
@@ -95,11 +95,11 @@ const MOBILE_NAV_ITEMS: readonly NavItem[] = [
   { to: "/pricing", label: "Credits", icon: BadgeDollarSign },
   { to: "/templates", label: "Templates", icon: Sparkles },
   { to: "/script-doctor", label: "Fix Scripts", icon: Bug, authOnly: true },
-  { to: "/clothing", label: "Clothing", icon: Shirt },
-  { to: "/image-generator", label: "Images", icon: ImageIcon },
+  { to: "/clothing", label: "Clothing Soon", icon: Shirt },
+  { to: "/image-generator", label: "Images Soon", icon: ImageIcon },
   { to: "/video-generator", label: "Video Generator", icon: Film },
-  { to: "/generate-3d", label: "3D Model Generator", icon: Box },
-  { to: "/ui-generator", label: "UI Generator", icon: LayoutIcon },
+  { to: "/generate-3d", label: "3D Models Soon", icon: Box },
+  { to: "/ui-generator", label: "UI Soon", icon: LayoutIcon },
   { to: "/showcase", label: "Showcase", icon: Star },
   { to: "/browse", label: "Community Chat", icon: Users },
   { to: "/gallery", label: "Gallery", icon: GalleryHorizontal },
@@ -288,16 +288,26 @@ export function Header() {
                   <div className="grid grid-cols-2 gap-2">
                     <Link
                       to="/generate-3d"
-                      className="rounded-lg border border-border/60 bg-background/50 p-2 text-xs font-semibold transition hover:border-primary/40 hover:bg-surface"
+                      className="rounded-lg border border-amber-400/25 bg-amber-400/5 p-2 text-xs font-semibold transition hover:border-amber-400/45 hover:bg-amber-400/10"
                     >
-                      <Box className="mb-1 h-4 w-4 text-primary" />
+                      <div className="mb-1 flex items-center justify-between gap-2">
+                        <Box className="h-4 w-4 text-amber-300" />
+                        <span className="rounded-full bg-amber-400/10 px-1.5 py-0.5 text-[9px] uppercase text-amber-300">
+                          Soon
+                        </span>
+                      </div>
                       3D Model Generator
                     </Link>
                     <Link
                       to="/ui-generator"
-                      className="rounded-lg border border-border/60 bg-background/50 p-2 text-xs font-semibold transition hover:border-primary/40 hover:bg-surface"
+                      className="rounded-lg border border-amber-400/25 bg-amber-400/5 p-2 text-xs font-semibold transition hover:border-amber-400/45 hover:bg-amber-400/10"
                     >
-                      <LayoutIcon className="mb-1 h-4 w-4 text-primary" />
+                      <div className="mb-1 flex items-center justify-between gap-2">
+                        <LayoutIcon className="h-4 w-4 text-amber-300" />
+                        <span className="rounded-full bg-amber-400/10 px-1.5 py-0.5 text-[9px] uppercase text-amber-300">
+                          Soon
+                        </span>
+                      </div>
                       Fancy UI Generator
                     </Link>
                   </div>

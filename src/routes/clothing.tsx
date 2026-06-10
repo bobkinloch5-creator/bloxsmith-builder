@@ -8,9 +8,16 @@ import { useAuth } from "@/lib/auth-context";
 import { generateClothing, type GenerateClothingResult } from "@/lib/clothing.functions";
 import { Shirt, Upload, Sparkles, Download, ImageIcon, Loader2, X, Box } from "lucide-react";
 import { ClothingPreview3D } from "@/components/ClothingPreview3D";
+import { ComingSoonToolPage } from "@/components/ComingSoonToolPage";
 
 export const Route = createFileRoute("/clothing")({
-  component: () => (<RequireAuth><ClothingStudio /></RequireAuth>),
+  component: () => (
+    <ComingSoonToolPage
+      eyebrow="Avatar clothing"
+      title="Clothing Generation Is Coming Soon"
+      description="Roblox shirts, pants, layered clothing concepts, accessories, and wearable previews are being polished before the next release. For now, use AI Chat for outfit planning, Script Doctor for Luau, or Video Generator for promos."
+    />
+  ),
   head: () => ({
     meta: [
       { title: "AI Roblox Clothing Generator — Make Shirts & Pants | BloxSmith" },

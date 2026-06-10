@@ -6,9 +6,16 @@ import { Header, Footer } from "@/components/layout";
 import { useAuth } from "@/lib/auth-context";
 import { generateImageStudio, type GenerateImageResult } from "@/lib/image-studio.functions";
 import { Sparkles, Upload, Download, Loader2, Image as ImageIcon, X, Wand2 } from "lucide-react";
+import { ComingSoonToolPage } from "@/components/ComingSoonToolPage";
 
 export const Route = createFileRoute("/image-generator")({
-  component: ImageGeneratorPage,
+  component: () => (
+    <ComingSoonToolPage
+      eyebrow="Images, icons, decals, and thumbnails"
+      title="Image Generation Is Coming Soon"
+      description="BloxSmith image generation is paused while thumbnails, game icons, decals, badges, banners, and reference-image workflows are upgraded. AI Chat remains live for planning prompts and marketplace copy."
+    />
+  ),
   head: () => ({
     meta: [
       { title: "AI Roblox Image Generator | BloxSmith" },

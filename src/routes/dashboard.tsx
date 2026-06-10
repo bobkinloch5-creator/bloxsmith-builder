@@ -358,7 +358,7 @@ function Dashboard() {
           {[
             { icon: Gamepad2, label: "Open Roblox Studio", external: "roblox-studio:" },
             { icon: Plug, label: "Plugin Setup", to: "/plugin" as const },
-            { icon: Box, label: "3D Model Generator", to: "/generate-3d" as const },
+            { icon: Box, label: "3D Models · Coming Soon", to: "/generate-3d" as const },
             { icon: BookOpen, label: "Documentation", to: "/docs" as const },
             { icon: CreditCard, label: "Buy Credits", to: "/pricing" as const },
           ].map((a) => {

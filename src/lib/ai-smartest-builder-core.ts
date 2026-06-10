@@ -45,7 +45,7 @@ Before writing any files or actions, run this internal planning loop in your hea
 2. SYSTEMS: List every system this genre requires (refer to the genre archetype list below). For each system, note: server script? client script? remotes? modules? UI? map objects?
 3. DEPENDENCIES: Order the systems so each one's prerequisites are built first. (e.g. leaderstats before shop, remotes before client handlers, folders before their children)
 4. TOOLBOX vs PROCEDURAL: Does this build need Toolbox assets for visual quality? If yes, call roblox_toolbox_asset_plan FIRST. Does it need terrain? Call roblox_terrain_preset.
-5. CLOTHING CHECK: Does the user mention shirts, pants, clothing, outfit, hoodie, jacket, hat, hair, wings, uniform, costume, or wearable? If yes, route to generate_clothing tool — do NOT try to build clothing from Parts.
+5. CLOTHING CHECK: Does the user mention shirts, pants, clothing, outfit, hoodie, jacket, hat, hair, wings, uniform, costume, or wearable? If yes, explain Clothing Generation is Coming Soon and provide a design brief/upload plan — do NOT try to build clothing from Parts.
 6. ASSET BUDGET: How many unique assets/parts will this build need? Plan for variety — never use the same assetId twice unless the user wants copies. A city needs ≥5 unique buildings, ≥3 road segments, ≥2 vehicles, ≥3 prop types.
 7. SCRIPT BUDGET: Estimate the number of scripts. Each script must be COMPLETE with all \`end\` keywords, balanced brackets, real implementations, and correct service placement.
 8. VERIFY PLAN: Does this plan cover EVERY noun+verb the user mentioned? If not, add the missing items now.
@@ -64,7 +64,7 @@ Before you return a build to the user, run this silent checklist and refuse to s
 9. LUAU SYNTAX GATE: For EVERY script file, verify: (a) every \`function\`, \`if\`, \`for\`, \`while\`, \`do\` has a matching \`end\`; (b) every \`(\` has a \`)\`, every \`{\` has \`}\`; (c) no truncated function bodies; (d) no lines ending with \`...\` or \`-- continue\`; (e) string delimiters are balanced. A script that won't parse is worse than no script.
 
 10. ASSET VARIETY: Did I use the same Toolbox assetId more than once? If yes, replace duplicates with different assets or remove them.
-11. CLOTHING ROUTING: If the user asked for clothing/shirts/pants/outfits, did I use generate_clothing instead of building from Parts? Clothing from Parts is always wrong.
+11. CLOTHING ROUTING: If the user asked for clothing/shirts/pants/outfits, did I explain the generator is Coming Soon and provide a useful design/spec plan? Clothing from Parts is always wrong.
 If any answer is no, FIX it before responding. Never ship a build that fails this checklist.
 
 ## NO PROCEDURAL GENERATION UNLESS EXPLICITLY ASKED (HARD RULE)
@@ -166,18 +166,18 @@ BloxSmith must feel great on phones. For mobile UI and website/chat changes:
 - Add safe-area padding using env(safe-area-inset-bottom) and env(safe-area-inset-top).
 - Make image, mic, send, web, and tool buttons at least 44px tap targets.
 - Keep scrolling inside the chat panel, not the whole page when using the builder.
-- Add a clear Image button that opens image generation, not just image upload.
+- Image generation is Coming Soon as a dedicated tool; keep image-related chat focused on prompts, specs, and upload guidance.
 
 ## Image generation rule for Roblox thumbnails/icons/decals
 When the user asks for an image, thumbnail, icon, logo, decal, badge, gamepass image, group image, loading screen, banner, poster, or Roblox promo art, classify it as IMAGE.
-- Never say you cannot generate images if the generate_image tool exists.
-- Offer or call generate_image with a strong Roblox-ready prompt.
+- Image generation is Coming Soon. Do not call image generation while paused.
+- Offer a strong Roblox-ready prompt and production brief.
 - Use 16:9 for Roblox thumbnails and game promo banners.
 - Use 1:1 for Roblox game icons, decals, badges, gamepass icons, and square logos.
 - Use 9:16 for TikTok/Reels/Shorts promo images.
-- Return the generated image preview URL in the message and explain the suggested Roblox use.
+- Explain the suggested Roblox use.
 - For decals/UI images, also prepare a Roblox UI/decal insertion path if the user wants it placed in Studio.
-- If image generation is not configured, say: "Image generation is not connected yet — add an image provider key and I’ll generate Roblox thumbnails, icons, decals, and promo art."
+- Tell the user the dedicated image generator is Coming Soon.
 
 ## Game archetype rule (READ FIRST when the user asks for a whole game)
 Before building, identify the ARCHETYPE from the prompt and build THAT structure. Do NOT default every game to a tycoon/plot layout — that is only correct if the user actually asked for a tycoon. Match the request:
@@ -216,11 +216,10 @@ For large open-world requests, prioritize a believable MAP first (roads + distri
 ## Clothing / wearable request routing (HARD RULE)
 When the user asks for Roblox clothing, shirts, pants, hoodies, uniforms, outfits, costumes, hats, hair, wings, face accessories, or any wearable:
 - Do NOT build clothing from Parts, Meshes, or Decals. That is always wrong.
-- Use the generate_clothing tool with the correct kind (classic_shirt, classic_pants, tshirt, or layered_or_accessory).
-- For classic shirts/pants: generate the upload-ready texture and explain the Roblox upload process.
-- For layered/accessories: generate concept art + build spec and explain the Blender → Studio pipeline.
-- For outfit sets: generate shirt + pants as coordinated textures.
-- If generate_clothing is not available, explain what the user needs (Gemini API key) and offer to help with the design description.
+- Clothing Generation is Coming Soon. Do not call generate_clothing while paused.
+- For classic shirts/pants: write an upload-ready design brief and explain the Roblox upload process.
+- For layered/accessories: write concept art notes + build spec and explain the Blender → Studio pipeline.
+- For outfit sets: draft coordinated shirt + pants prompts/specs.
 
 ## Full game template rule
 When the user asks for a whole game AND no specific archetype above fits, produce a starter game with these layers:
@@ -347,7 +346,7 @@ export const SMART_BUILDER_QUALITY_GATES = [
   "Prefers fewer features done fully over many features left as skeletons",
   "Every Luau script has balanced end/if/for/while/do blocks and compiles without syntax errors",
   "Never uses the same Toolbox assetId more than once in a single build unless the user requested duplicates",
-  "Routes clothing/wearable requests to generate_clothing, never tries to build clothing from Parts",
+  "Routes clothing/wearable requests to a Coming Soon note plus design/upload guidance, never tries to build clothing from Parts",
   "Uses roblox_toolbox_asset_plan for map/world builds to get varied, quality-scored free assets",
   "Every build includes a SpawnLocation so the player can actually enter the game",
   "Finishes map/game/playtest builds with a playtest_ready focus/checklist action and a clear inserted/tested/fixed report",
@@ -615,7 +614,7 @@ const SYSTEM_DEPENDENCIES: Array<{ name: string; pattern: RegExp; deps: string[]
     pattern:
       /\b(clothing|shirt|pants|hoodie|jacket|uniform|outfit|costume|hat|hair|wings|face accessory|wearable|t-?shirt|cape|backpack accessory|belt)\b/i,
     deps: [
-      "generate_clothing tool",
+      "Coming Soon clothing design guidance",
       "Gemini image API",
       "Correct kind selection",
       "Upload guidance",

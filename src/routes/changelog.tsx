@@ -48,6 +48,39 @@ const tagStyles = {
 
 export const changelogItems = [
   {
+    version: "v3.10.3",
+    date: "June 10, 2026",
+    title: "Generator Availability Cleanup",
+    description:
+      "BloxSmith now clearly marks paused creation tools as Coming Soon while keeping AI Chat, Video Generator, and Script Doctor live.",
+    updates: [
+      {
+        category: "AI",
+        tagColor: tagStyles.ai,
+        icon: Bot,
+        title: "AI Chat Stays Live",
+        detail:
+          "The main project AI chat remains active for Roblox planning, scripts, fixes, marketplace copy, project organization, and step-by-step guidance.",
+      },
+      {
+        category: "Tools",
+        tagColor: tagStyles.tools,
+        icon: Clock,
+        title: "Paused Generators Marked Coming Soon",
+        detail:
+          "3D model generation, image generation, clothing/accessory generation, and the dedicated UI Generator now show clear Coming Soon pages and navigation labels while they are being polished.",
+      },
+      {
+        category: "Tools",
+        tagColor: tagStyles.tools,
+        icon: Film,
+        title: "Live Tools Kept Available",
+        detail:
+          "Video Generator and Script Doctor remain available, and the AI no longer silently calls paused image or clothing generation tools from chat.",
+      },
+    ],
+  },
+  {
     version: "v3.10.2",
     date: "June 10, 2026",
     title: "Advanced AI Chat Queue & MCP Reliability Pass",

@@ -43,9 +43,16 @@ import {
   Trash2,
   Wand2,
 } from "lucide-react";
+import { ComingSoonToolPage } from "@/components/ComingSoonToolPage";
 
 export const Route = createFileRoute("/ui-generator")({
-  component: UIGeneratorPage,
+  component: () => (
+    <ComingSoonToolPage
+      eyebrow="Roblox GUI builder"
+      title="UI Generation Is Coming Soon"
+      description="The dedicated UI Generator is being held for a more polished release. AI Chat can still plan interfaces and write scripts, while Script Doctor remains live for fixing Luau and Video Generator remains live for promos."
+    />
+  ),
   head: () => ({
     meta: [
       { title: "UI Generator — Roblox GUI Builder | BloxSmith" },

@@ -2933,8 +2933,8 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                     },
                     {
                       icon: Shirt,
-                      title: "Design clothing",
-                      desc: "Make me a black and red cyber hoodie design, plus matching pants, as Roblox-ready clothing.",
+                      title: "Plan clothing",
+                      desc: "Clothing generation is coming soon. Help me plan a black and red cyber hoodie outfit, palette, upload notes, and listing copy.",
                     },
                   ].map((s) => (
                     <button

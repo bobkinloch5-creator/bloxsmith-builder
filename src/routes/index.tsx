@@ -8,6 +8,7 @@ import showcaseObby from "@/assets/showcase-obby-new.png";
 import {
   ArrowRight,
   Bot,
+  Box,
   Brain,
   CheckCircle2,
   Clock,
@@ -29,6 +30,7 @@ import {
   Rocket,
   Send,
   Shield,
+  Shirt,
   Smartphone,
   Sparkles,
   Star,
@@ -148,8 +150,8 @@ const canMake = [
   },
   {
     icon: Image,
-    title: "Thumbnails & Icons",
-    desc: "Roblox-ready game art, decals, badges, posters, and promo images.",
+    title: "Thumbnails & Icons (Soon)",
+    desc: "Roblox-ready game art, decals, badges, posters, and promo images are coming soon.",
   },
 ];
 
@@ -180,8 +182,8 @@ const builderModes = [
   },
   {
     icon: Palette,
-    title: "GUI Builder",
-    desc: "Build polished menus, shops, HUDs, popups, and animated UI.",
+    title: "GUI Planning",
+    desc: "Plan polished menus, shops, HUDs, popups, and animated UI in AI Chat while the UI Generator is coming soon.",
   },
   {
     icon: Zap,
@@ -262,9 +264,24 @@ const comingSoon = [
     desc: "Deeper project awareness so BloxSmith understands your game better.",
   },
   {
+    icon: Box,
+    title: "3D model generation",
+    desc: "Text-to-3D, image-to-3D, animation, rigged exports, and Roblox model workflows are being prepared for a cleaner release.",
+  },
+  {
+    icon: Shirt,
+    title: "Clothing generation",
+    desc: "Roblox shirts, pants, layered clothing concepts, accessories, and wearable previews are coming soon.",
+  },
+  {
     icon: Image,
-    title: "AI thumbnail generator",
-    desc: "Create Roblox-ready icons, thumbnails, decals, badges, and promo art.",
+    title: "Image generator",
+    desc: "Roblox-ready icons, thumbnails, decals, badges, banners, and promo art are coming soon.",
+  },
+  {
+    icon: Palette,
+    title: "UI Generator",
+    desc: "The dedicated Roblox GUI generator is coming soon. AI Chat can still plan GUI layouts and write scripts.",
   },
   {
     icon: Package,
@@ -314,11 +331,11 @@ const poweredBy = [
   },
   {
     name: "Meshy",
-    detail: "Connected 3D/model creation workflows for Roblox-ready asset planning.",
+    detail: "Connected 3D/model creation workflows are planned for the upcoming model generation release.",
   },
   {
     name: "Tripo",
-    detail: "3D model generation, animation workflows, rigged exports, and Studio-ready assets.",
+    detail: "3D model generation, animation workflows, rigged exports, and Studio-ready assets are coming soon.",
   },
   {
     name: "BloxSmith Tools",

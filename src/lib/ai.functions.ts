@@ -1975,16 +1975,8 @@ function pickGenerationTools(
     add("roblox_asset_info");
     add("roblox_asset_thumbnail");
   }
-  if (/\b(image|thumbnail|icon|logo|decal|artwork|poster|banner|loading screen)\b/i.test(lower)) {
-    add("generate_image");
-  }
-  if (
-    /\b(shirt|pants|t-?shirt|tee|hoodie|jacket|coat|uniform|outfit|clothing|clothes|apparel|wearable|costume|dress|garment|accessor(y|ies)|hat|cap|helmet|glasses|goggles|mask|backpack|bag|chain|necklace|wings?|hair|shoulder|pauldron)\b/i.test(
-      lower,
-    )
-  ) {
-    add("generate_clothing");
-  }
+  // Image and clothing generators are paused behind Coming Soon pages. Keep AI
+  // chat live for planning/copy/specs, but do not call paid generator tools.
 
   return picked;
 }
@@ -3090,19 +3082,8 @@ function pickChatTools(prompt: string, allTools: Record<string, any>): Record<st
     add("roblox_asset_info");
     add("roblox_asset_thumbnail");
   }
-  if (
-    /\b(generate|create|make|draw|design)\b[\s\S]{0,80}\b(image|picture|photo|art|artwork|thumbnail|icon|logo|decal|poster|banner|loading screen)\b/i.test(
-      lower,
-    ) ||
-    /\b(image|picture|photo|artwork|thumbnail|icon|logo|decal|poster|banner|loading screen)\b[\s\S]{0,80}\b(generate|create|make|draw|design)\b/i.test(
-      lower,
-    ) ||
-    /\b(draw|illustrate)\b[\s\S]{0,80}\b(dog|cat|pet|character|avatar|scene|thumbnail|icon|logo|poster|banner|decal|art)\b/i.test(
-      lower,
-    )
-  ) {
-    add("generate_image");
-  }
+  // Image generation is Coming Soon. Chat can draft prompts and marketplace
+  // copy, but should not call the generator while it is paused.
 
   return picked;
 }
@@ -3233,7 +3214,7 @@ CHAT MODE RULES - never break these:
 - When the user asks what to build next, produce a practical sequence of features, systems, polish tasks, and testing steps based on memory, live files, and the latest request.
 - MARKETPLACE LISTINGS: When asked to prepare or improve a listing, include a strong product title, short description, full description, feature bullets, tags/keywords, pricing ideas, setup instructions, image/thumbnail/preview ideas, and a step-by-step publishing checklist.
 - COPY-FRIENDLY OUTPUT: Put scripts, setup instructions, tags, titles, descriptions, and generated listing copy in clearly separated sections or fenced code blocks so users can copy them cleanly.
-- IMAGE GENERATION: If the user asks you to make, create, draw, or generate an image/picture/photo/artwork/logo/icon/decal/thumbnail/banner/poster, call the generate_image tool. Do not merely describe the image. After the tool returns, embed the markdown image it gives you and add a short "Download PNG" link using the returned image URL.
+- IMAGE GENERATION: The dedicated image generator is Coming Soon. If the user asks for an image/picture/photo/artwork/logo/icon/decal/thumbnail/banner/poster, do not call a generator tool. Help by writing a polished Roblox-ready prompt, composition notes, upload checklist, and marketplace copy.
 - VISION: When the user attaches screenshots of Roblox Studio, their game, error popups, or reference images, analyze them in detail. Call out broken hierarchies, missing services, malformed Luau, UI layout issues, lighting/material problems, and red error text by exact wording. Tie every observation back to a concrete fix the user can apply.
 - MCP CONTEXT: If the user has connected MCP servers (Roblox docs, n8n, custom tools), reference relevant facts those servers expose. Cite which server you're drawing from so the user can trust the answer.
 - MEMORY: Use project memory for durable preferences, names, genre, style, and recent context. If it conflicts with the user's latest message or live project files, follow the latest message and live state.
