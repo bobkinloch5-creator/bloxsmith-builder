@@ -34,8 +34,18 @@ export const SITE_PROVIDER_MODELS: Record<SiteProviderId, string[]> = {
     "claude-sonnet-4-6",
     "claude-opus-4-7",
     "claude-opus-4-8",
+    "claude-fable-5",
   ],
 };
+
+// Models that are only visible/usable to owner accounts. Hidden in the UI
+// for non-owners and rejected server-side. Add ids here to gate new
+// experimental routes to staff/owner only.
+export const OWNER_ONLY_MODELS: ReadonlySet<string> = new Set(["claude-fable-5"]);
+
+export function isOwnerOnlyModel(modelId: string | null | undefined): boolean {
+  return !!modelId && OWNER_ONLY_MODELS.has(modelId);
+}
 
 export const SITE_PROVIDER_DEFAULT_MODEL: Record<SiteProviderId, string> = {
   neokens: "claude-sonnet-4-6-thinking",
@@ -125,6 +135,8 @@ export const SITE_MODEL_DESCRIPTIONS: Record<string, string> = {
     "Google's top reasoning model — large context, great for whole-project understanding and big builds. What it does for your game: reasons over your entire place, plans large systems, and handles long multi-file generations.",
   "gemini-3-flash":
     "Fast all-rounder for everyday Roblox scripting: GUIs, RemoteEvents, and small gameplay edits. Cheap and quick. What it does for your game: edits ScreenGuis, adds buttons, wires RemoteEvents, and ships small tweaks in seconds.",
+  "claude-fable-5":
+    "Experimental Comet route reserved for the owner account only. Hidden from normal users while it's being evaluated.",
 };
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -190,6 +202,8 @@ export const MODEL_CREDIT_MULTIPLIERS: Record<string, number> = {
   // Gemini
   "gemini-3.1-pro": 2,
   "gemini-3-flash": 1,
+  // Owner-only experimental
+  "claude-fable-5": 8,
 };
 
 export const DEFAULT_MODEL_CREDIT_MULTIPLIER = 1;
@@ -431,6 +445,12 @@ export const MODEL_TOOL_CAPABILITIES: Record<
     thinking: true,
     label: "Web + premium reasoning",
   },
+  "claude-fable-5": {
+    tools: true,
+    webSearch: true,
+    thinking: true,
+    label: "Owner-only experimental",
+  },
 };
 
 export function getModelToolCapabilities(modelName: string | null | undefined) {
@@ -571,6 +591,8 @@ export const COMET_MODEL_MAP: Record<string, { comet: string; thinking?: boolean
   "claude-opus-4-8": { comet: "claude-opus-4-8" },
   "claude-sonnet-4-6-thinking": { comet: "claude-sonnet-4-6", thinking: true },
   "claude-opus-4-8-thinking": { comet: "claude-opus-4-8", thinking: true },
+  // Owner-only experimental route
+  "claude-fable-5": { comet: "claude-fable-5" },
 };
 
 /**

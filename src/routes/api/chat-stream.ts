@@ -31,8 +31,11 @@ const MODEL_CONFIG: Record<string, { cost: number; provider: Provider; upstreamI
   "gpt-5.3-codex": { cost: 2, provider: "neokens" },
   "gpt-5.4": { cost: 4, provider: "neokens" },
   "gpt-5.5": { cost: 6, provider: "neokens" },
+  // Owner-only experimental Comet route
+  "claude-fable-5": { cost: 10, provider: "comet", upstreamId: "claude-fable-5" },
 };
 const ALLOWED_MODELS = new Set(Object.keys(MODEL_CONFIG));
+const OWNER_ONLY_MODELS = new Set<string>(["claude-fable-5"]);
 
 const SYSTEM_PROMPT = `You are BloxSmith, an expert AI assistant for building Roblox games.
 You help users design games, write Luau scripts, build maps, create assets, and ship full Roblox experiences.
@@ -63,6 +66,25 @@ export const Route = createFileRoute("/api/chat-stream")({
             ? body.model
             : "google/gemini-3-flash-preview";
           if (!userMessage) return new Response("Empty message", { status: 400 });
+
+          // Owner-only model gate
+          let isOwner = false;
+          if (OWNER_ONLY_MODELS.has(model)) {
+            const { data: roles } = await sb
+              .from("user_roles")
+              .select("role")
+              .eq("user_id", userId);
+            isOwner = (roles ?? []).some((r: any) => r.role === "owner");
+            if (!isOwner) {
+              return new Response(
+                JSON.stringify({
+                  error: "model_restricted",
+                  message: "This model is restricted to the owner account.",
+                }),
+                { status: 403, headers: { "Content-Type": "application/json" } },
+              );
+            }
+          }
 
           const modelCfg = MODEL_CONFIG[model];
           const cost = modelCfg.cost;
@@ -125,7 +147,18 @@ export const Route = createFileRoute("/api/chat-stream")({
           let upstreamModel: string;
           if (modelCfg.provider === "comet") {
             upstreamUrl = "https://api.cometapi.com/v1/chat/completions";
-            upstreamKey = process.env.COMETAPI_KEY || process.env.COMET_API_KEY;
+            // Prefer the user's personal CometAPI key if saved, else fall back
+            // to the shared site key.
+            let personalKey: string | null = null;
+            try {
+              const { data: pk } = await sb.rpc("get_provider_api_key" as any, {
+                _user_id: userId,
+                _provider: "comet",
+              });
+              if (typeof pk === "string" && pk.trim().length > 0) personalKey = pk.trim();
+            } catch {}
+            upstreamKey =
+              personalKey || process.env.COMETAPI_KEY || process.env.COMET_API_KEY;
             upstreamModel = modelCfg.upstreamId || model;
             if (!upstreamKey) {
               await Promise.resolve(sb.rpc("spend_credits", { _user_id: userId, _amount: -cost, _description: "Refund: CometAPI not configured", _metadata: { model } })).catch(() => {});

@@ -9,12 +9,14 @@ import {
   SITE_MODEL_DESCRIPTIONS,
   SITE_PROVIDER_LABELS,
   SITE_PROVIDER_MODELS,
+  OWNER_ONLY_MODELS,
   getModelCreditMultiplier,
   getModelTokenPricing,
   getModelToolCapabilities,
   type ModelTokenPricing,
   type SiteProviderId,
 } from "@/lib/ai-models";
+import { useAuth } from "@/lib/auth-context";
 
 type ProviderId = SiteProviderId;
 type ModelSelection = { provider: ProviderId; model: string };
@@ -62,6 +64,7 @@ export function ModelPicker({
 }) {
   const save = useServerFn(saveProjectAiSettings);
   const loadHealth = useServerFn(getSiteModelHealth);
+  const { isOwner } = useAuth();
   const [open, setOpen] = useState(false);
   const [, setSaving] = useState(false);
   const [query, setQuery] = useState("");
@@ -107,6 +110,7 @@ export function ModelPicker({
   const currentHealth = getHealth(currentProvider, currentModel);
   const normalizedQuery = query.trim().toLowerCase();
   const modelMatches = (p: ProviderId, m: string) => {
+    if (OWNER_ONLY_MODELS.has(m) && !isOwner) return false;
     if (!normalizedQuery) return true;
     const desc = SITE_MODEL_DESCRIPTIONS[m] ?? "";
     const providerLabel = SITE_PROVIDER_LABELS[p];
