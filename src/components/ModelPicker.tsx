@@ -64,6 +64,7 @@ export function ModelPicker({
 }) {
   const save = useServerFn(saveProjectAiSettings);
   const loadHealth = useServerFn(getSiteModelHealth);
+  const { isOwner } = useAuth();
   const [open, setOpen] = useState(false);
   const [, setSaving] = useState(false);
   const [query, setQuery] = useState("");
