@@ -67,6 +67,25 @@ export const Route = createFileRoute("/api/chat-stream")({
             : "google/gemini-3-flash-preview";
           if (!userMessage) return new Response("Empty message", { status: 400 });
 
+          // Owner-only model gate
+          let isOwner = false;
+          if (OWNER_ONLY_MODELS.has(model)) {
+            const { data: roles } = await sb
+              .from("user_roles")
+              .select("role")
+              .eq("user_id", userId);
+            isOwner = (roles ?? []).some((r: any) => r.role === "owner");
+            if (!isOwner) {
+              return new Response(
+                JSON.stringify({
+                  error: "model_restricted",
+                  message: "This model is restricted to the owner account.",
+                }),
+                { status: 403, headers: { "Content-Type": "application/json" } },
+              );
+            }
+          }
+
           const modelCfg = MODEL_CONFIG[model];
           const cost = modelCfg.cost;
 
