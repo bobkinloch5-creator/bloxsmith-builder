@@ -48,6 +48,31 @@ const tagStyles = {
 
 export const changelogItems = [
   {
+    version: "v3.10.7",
+    date: "June 10, 2026",
+    title: "Toolbox Insert Reliability",
+    description:
+      "Roblox Toolbox assets now queue more transparently and the Studio plugin reports clearer insert results.",
+    updates: [
+      {
+        category: "Tools",
+        tagColor: tagStyles.tools,
+        icon: Box,
+        title: "Stronger Add to Game Flow",
+        detail:
+          "The Toolbox Add to Game button now catches queue failures immediately, confirms the exact queued action, and keeps user-selected asset IDs attached for Studio execution.",
+      },
+      {
+        category: "Plugin",
+        tagColor: tagStyles.plugin,
+        icon: Wrench,
+        title: "Cleaner Studio Insert Reports",
+        detail:
+          "The Studio plugin now names fallback-loaded Toolbox wrappers, reports both LoadAsset and GetObjects failures, removes empty folders after failed loads, and logs the final inserted Studio path for selected assets.",
+      },
+    ],
+  },
+  {
     version: "v3.10.6",
     date: "June 10, 2026",
     title: "Cleaner Chat and Compact Toolbox",

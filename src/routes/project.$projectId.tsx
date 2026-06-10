@@ -1891,30 +1891,36 @@ function ProjectEditor() {
         : /decal|image/i.test(asset.assetType)
           ? "ReplicatedStorage/BloxSmith/Images"
           : "Workspace/GeneratedAssets";
-    await runQueuePluginAction({
-      data: {
-        projectId,
-        actionType: "insert_toolbox_asset",
-        payload: {
-          type: "insert_toolbox_asset",
-          assetId: asset.id,
-          name: asset.name,
-          parent,
-          scanScripts: true,
-          removeUnsafeScripts: true,
-          removeScriptsFromDecorativeAssets: true,
-          freeOnly: true,
-          publicOnly: true,
-          requiresApprovalIfScriptsFound: true,
-          selectedByUser: true,
-          source: "bloxsmith_toolbox_picker",
-        },
-      } as any,
-    });
+    let queued: { id?: string } | null = null;
+    try {
+      queued = await runQueuePluginAction({
+        data: {
+          projectId,
+          actionType: "insert_toolbox_asset",
+          payload: {
+            type: "insert_toolbox_asset",
+            assetId: asset.id,
+            name: asset.name,
+            parent,
+            scanScripts: true,
+            removeUnsafeScripts: true,
+            removeScriptsFromDecorativeAssets: true,
+            freeOnly: true,
+            publicOnly: true,
+            requiresApprovalIfScriptsFound: true,
+            selectedByUser: true,
+            source: "bloxsmith_toolbox_picker",
+          },
+        } as any,
+      });
+    } catch (e: any) {
+      toast.error(e?.message ?? "Could not queue this Toolbox asset.");
+      return;
+    }
     toast.success(`Queued ${asset.name} for Studio`);
     await pushMsg(
       "assistant",
-      `Queued the exact toolbox asset you picked: ${asset.name} by ${asset.creator || "Unknown creator"} (assetId ${asset.id}). It will be scanned and inserted into ${parent} by the Studio plugin.`,
+      `Queued the exact toolbox asset you picked: ${asset.name} by ${asset.creator || "Unknown creator"} (assetId ${asset.id}). It will be scanned and inserted into ${parent} by the Studio plugin.${queued?.id ? ` Action ${queued.id}.` : ""}`,
       { kind: "toolbox_asset", assetId: asset.id, assetName: asset.name },
     );
     refreshAiContext();

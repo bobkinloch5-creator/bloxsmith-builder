@@ -2225,14 +2225,16 @@ local function tryLoadAssetById(assetId)
 	local ok2, objs = pcall(function() return game:GetObjects("rbxassetid://" .. tostring(assetId)) end)
 	if ok2 and objs and #objs > 0 then
 		local wrapper = Instance.new("Model")
+		wrapper.Name = "ToolboxAsset_" .. tostring(assetId)
 		for _, o in ipairs(objs) do o.Parent = wrapper end
 		return wrapper, nil
 	end
+	local fallbackErr = ok2 and "no objects returned" or tostring(objs)
 	local hint = ""
 	if firstErr:find("not authorized") or firstErr:find("Authorized") then
 		hint = " (asset is private or not owned by the game creator — try a public/free model, or take the model into your inventory first)"
 	end
-	return nil, "LoadAsset failed: " .. firstErr .. hint
+	return nil, "LoadAsset failed: " .. firstErr .. "; GetObjects fallback failed: " .. fallbackErr .. hint
 end
 
 -- Insert a Roblox free model / mesh / decal / animation from the toolbox by assetId.
@@ -2243,7 +2245,10 @@ function Actions.insertAsset(a)
 	local assetId = tonumber(a.assetId)
 	if not assetId then return false, "missing assetId" end
 	local model, err = tryLoadAssetById(assetId)
-	if not model then return false, err end
+	if not model then
+		pruneEmptyBloxFolders()
+		return false, err
+	end
 	local moved = {}
 	local children = model:GetChildren()
 	local targetParent = parent
@@ -2272,6 +2277,13 @@ function Actions.insertAsset(a)
 		pcall(function() placed:SetAttribute("BloxAutoPlace", true) end)
 	end
 	if placed then stabilizeGeneratedInstance(placed) end
+	if placed then
+		appendLog(("Inserted Toolbox asset %s (%s) into %s"):format(
+			tostring(a.name or model.Name or assetId),
+			tostring(assetId),
+			tostring(instancePath(placed) or "?")
+		))
+	end
 	return true, nil, placed
 end
 
@@ -2284,7 +2296,10 @@ function Actions.insert_toolbox_asset(a)
 	if not assetId then return false, "missing assetId" end
 	
 	local model, err = tryLoadAssetById(assetId)
-	if not model then return false, err end
+	if not model then
+		pruneEmptyBloxFolders()
+		return false, err
+	end
 	
 	-- Asset Safety Scanner: collect scripts + classify suspicion
 	local scriptsFound = {}
@@ -2407,6 +2422,13 @@ function Actions.insert_toolbox_asset(a)
 
 	scheduleSnapshot()
 	if placed then stabilizeGeneratedInstance(placed) end
+	if placed then
+		appendLog(("Inserted selected Toolbox asset %s (%s) into %s"):format(
+			tostring(a.name or model.Name or assetId),
+			tostring(assetId),
+			tostring(instancePath(placed) or "?")
+		))
+	end
 	return true, nil, placed
 end
 
