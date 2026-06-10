@@ -202,6 +202,8 @@ export const MODEL_CREDIT_MULTIPLIERS: Record<string, number> = {
   // Gemini
   "gemini-3.1-pro": 2,
   "gemini-3-flash": 1,
+  // Owner-only experimental
+  "claude-fable-5": 8,
 };
 
 export const DEFAULT_MODEL_CREDIT_MULTIPLIER = 1;
