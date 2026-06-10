@@ -48,6 +48,31 @@ const tagStyles = {
 
 export const changelogItems = [
   {
+    version: "v3.10.6",
+    date: "June 10, 2026",
+    title: "Cleaner Chat and Compact Toolbox",
+    description:
+      "The project chat workspace is easier to read over themed backgrounds, and the built-in Roblox Toolbox is smaller and quicker to scan.",
+    updates: [
+      {
+        category: "UI",
+        tagColor: tagStyles.ui,
+        icon: MessageSquare,
+        title: "Cleaner Project Chat",
+        detail:
+          "Assistant replies now sit on a subtle readable surface, the composer is wider on desktop, and the chat controls use a lighter, less crowded layout.",
+      },
+      {
+        category: "Tools",
+        tagColor: tagStyles.tools,
+        icon: Box,
+        title: "Compact Toolbox Panel",
+        detail:
+          "The in-chat Roblox Toolbox panel now uses shorter controls, smaller asset thumbnails, a tighter grid, and a reduced panel height so users can browse assets without losing the conversation.",
+      },
+    ],
+  },
+  {
     version: "v3.10.5",
     date: "June 10, 2026",
     title: "Owner Fable, Better Toolbox, and Social Profiles",

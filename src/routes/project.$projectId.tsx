@@ -2535,8 +2535,11 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
 
         {/* AI chat */}
         <aside
-          className={`flex ${showChat ? "lg:flex" : "lg:hidden"} relative min-h-0 h-full w-full min-w-0 max-w-full border-l border-border ${chatWallpaper ? "bg-background/30 backdrop-blur-sm" : "bg-surface/20"} flex-col overflow-hidden lg:[grid-column:3]`}
+          className={`flex ${showChat ? "lg:flex" : "lg:hidden"} relative min-h-0 h-full w-full min-w-0 max-w-full border-l border-border ${chatWallpaper ? "bg-background/70 backdrop-blur-md" : "bg-surface/20"} flex-col overflow-hidden lg:[grid-column:3]`}
         >
+          {chatWallpaper && (
+            <div className="pointer-events-none absolute inset-0 bg-background/35 backdrop-blur-[1.5px]" />
+          )}
           {/* Lemonade-style top accent strip */}
           <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-[2px] bg-gradient-to-r from-transparent via-primary/70 to-transparent" />
           {/* Drag handle to stretch chat panel wider/narrower */}
@@ -2557,7 +2560,7 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
             className="hidden lg:block absolute left-0 top-0 h-full w-1.5 -ml-[3px] cursor-col-resize z-20 hover:bg-primary/40 active:bg-primary/60 transition-colors"
           />
 
-          <div className="shrink-0 px-3 py-2.5 sm:px-4 sm:py-3 border-b border-border/60 bg-surface-elevated/30 space-y-2.5 sm:space-y-3">
+          <div className="relative z-10 shrink-0 px-3 py-2.5 sm:px-4 sm:py-3 border-b border-border/60 bg-surface-elevated/30 space-y-2.5 sm:space-y-3">
             <div className="flex items-center justify-between gap-2 flex-wrap">
               {(() => {
                 const hasLive = aiContext?.updatedAt != null;
@@ -2895,7 +2898,7 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
             </div>
           </div>
 
-          <div className="flex-1 min-h-0 overflow-y-auto px-3 py-4 sm:px-4 sm:py-5 space-y-3 sm:space-y-4 scroll-smooth">
+          <div className="relative z-10 flex-1 min-h-0 overflow-y-auto px-3 py-4 sm:px-4 sm:py-5 space-y-3 sm:space-y-4 scroll-smooth">
             {messages.length === 0 && (
               <div className="flex flex-col items-center justify-center h-full py-8 px-2">
                 <div className="relative mb-5 flex flex-col items-center">
@@ -2979,8 +2982,8 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                     <div
                       className={
                         isUser
-                          ? "rounded-3xl bg-white/[0.06] border border-white/[0.08] text-foreground text-sm leading-relaxed whitespace-pre-wrap break-words px-4 py-2.5"
-                          : "text-foreground/95 text-sm leading-relaxed w-full"
+                          ? "rounded-2xl border border-primary/20 bg-primary/10 text-foreground text-sm leading-relaxed whitespace-pre-wrap break-words px-4 py-2.5 shadow-lg shadow-black/10"
+                          : "w-full rounded-2xl border border-border/40 bg-background/60 px-3.5 py-3 text-sm leading-relaxed text-foreground/95 shadow-sm backdrop-blur-md"
                       }
                     >
                       {isUser ? m.content : <AssistantMessage content={m.content} />}
@@ -3263,9 +3266,9 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
               </Link>
             </div>
           ) : (
-            <div className="shrink-0 border-t border-border/70 bg-background/90 p-3 shadow-[0_-18px_40px_-30px_rgba(0,0,0,0.9)] backdrop-blur-xl sm:px-4">
+            <div className="relative z-10 shrink-0 border-t border-border/70 bg-background/90 p-2.5 shadow-[0_-18px_40px_-30px_rgba(0,0,0,0.9)] backdrop-blur-xl sm:px-3">
               <div
-                className={`mx-auto w-full max-w-5xl rounded-2xl border bg-background/90 px-3 py-3 shadow-2xl shadow-black/25 ring-1 ring-white/[0.03] transition focus-within:shadow-black/35 sm:px-4 ${chatMode ? "border-accent/40 focus-within:border-accent/60" : planMode ? "border-primary/40 focus-within:border-primary/60" : "border-border/70 focus-within:border-primary/50"}`}
+                className={`mx-auto w-full max-w-[88rem] rounded-xl border bg-background/90 px-3 py-2.5 shadow-lg shadow-black/15 ring-1 ring-white/[0.03] transition sm:px-3.5 ${chatMode ? "border-accent/40 focus-within:border-accent/60" : planMode ? "border-primary/40 focus-within:border-primary/60" : "border-border/70 focus-within:border-primary/50"}`}
               >
                 {attachments.length > 0 && (
                   <div className="mb-2 flex flex-wrap gap-2">
@@ -3360,7 +3363,7 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                     building and edits are disabled. Ask the project owner to make you an editor.
                   </div>
                 )}
-                <div className="mb-2 rounded-xl border border-border/60 bg-surface/70 px-3 py-2.5 shadow-inner shadow-black/10">
+                <div className="mb-2 rounded-lg border border-border/60 bg-surface/65 px-2.5 py-2 shadow-inner shadow-black/10">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
@@ -3369,7 +3372,7 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                           {currentReasoning.label}
                         </span>
                       </div>
-                      <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
+                      <p className="mt-0.5 hidden text-[11px] leading-snug text-muted-foreground sm:block">
                         {currentReasoning.description}
                       </p>
                     </div>
@@ -3419,14 +3422,14 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                   </div>
                 )}
                 {showToolboxPanel && (
-                  <div className="mb-2 max-h-[440px] overflow-y-auto rounded-2xl border border-border/60 bg-background/70 p-2 shadow-xl shadow-black/20 backdrop-blur">
-                    <div className="mb-2 flex items-center justify-between gap-2 px-1">
-                      <div>
+                  <div className="mb-2 max-h-[320px] overflow-y-auto rounded-xl border border-border/60 bg-background/75 p-1.5 shadow-lg shadow-black/15 backdrop-blur">
+                    <div className="mb-1.5 flex items-center justify-between gap-2 px-1">
+                      <div className="min-w-0">
                         <div className="text-xs font-semibold text-foreground">
                           AI-powered Roblox Toolbox
                         </div>
-                        <p className="mt-0.5 text-[11px] text-muted-foreground">
-                          Here are some assets I found for your game. Pick what you want, then press Add to Game.
+                        <p className="mt-0.5 truncate text-[10px] text-muted-foreground">
+                          Pick assets, then press Add to Game.
                         </p>
                       </div>
                       <button
@@ -3675,7 +3678,7 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                           : "Type any command: build a map, add UI, fix bugs..."
                   }
                   disabled={aiUsageBlocked}
-                  className="min-h-20 w-full resize-none rounded-xl border border-border/60 bg-background/75 px-3 py-2 text-[13px] leading-relaxed placeholder:text-muted-foreground/80 shadow-inner shadow-black/10 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/10 disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm"
+                  className="min-h-16 w-full resize-none rounded-lg border border-border/60 bg-background/75 px-3 py-2 text-[13px] leading-relaxed placeholder:text-muted-foreground/80 shadow-inner shadow-black/10 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/10 disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-[4.5rem] sm:text-sm"
                 />
                 <input
                   ref={fileInputRef}
@@ -3850,7 +3853,7 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                   )}
                 </div>
               </div>
-              <div className="mx-auto flex w-full max-w-5xl flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="mx-auto flex w-full max-w-[88rem] flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                   <button
                     type="button"

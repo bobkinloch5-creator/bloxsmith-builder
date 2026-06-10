@@ -167,10 +167,23 @@ export function ToolboxAssetPicker({
     }
   };
 
+  const wrapClass = compact ? "space-y-2.5" : "space-y-4";
+  const controlClass = compact
+    ? "space-y-2 rounded-xl border border-border/60 bg-surface/55 p-2 shadow-sm ring-1 ring-white/[0.03]"
+    : "space-y-3 rounded-2xl border border-border/60 bg-surface/55 p-3 shadow-sm ring-1 ring-white/[0.03] sm:p-4";
+  const categoryButtonClass = (active: boolean) =>
+    `rounded-full border font-semibold transition ${
+      compact ? "px-2.5 py-1 text-[11px]" : "px-3 py-1.5 text-xs"
+    } ${
+      active
+        ? "border-primary bg-primary text-primary-foreground shadow-sm shadow-primary/20"
+        : "border-border/70 bg-background/40 text-muted-foreground hover:bg-surface-elevated hover:text-foreground"
+    }`;
+
   return (
-    <div className="space-y-4">
-      <section className="space-y-3 rounded-2xl border border-border/60 bg-surface/55 p-3 shadow-sm ring-1 ring-white/[0.03] sm:p-4">
-        {onAdd && (
+    <div className={wrapClass}>
+      <section className={controlClass}>
+        {onAdd && !compact && (
           <div className="rounded-xl border border-primary/20 bg-primary/5 px-3 py-2">
             <div className="flex items-start gap-2">
               <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
@@ -188,11 +201,7 @@ export function ToolboxAssetPicker({
                 key={c}
                 type="button"
                 onClick={() => setCat(c)}
-                className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
-                  cat === c
-                    ? "border-primary bg-primary text-primary-foreground shadow-sm shadow-primary/20"
-                    : "border-border/70 bg-background/40 text-muted-foreground hover:bg-surface-elevated hover:text-foreground"
-                }`}
+                className={categoryButtonClass(cat === c)}
               >
                 {c}
               </button>
@@ -201,7 +210,9 @@ export function ToolboxAssetPicker({
           <select
             value={sort}
             onChange={(e) => setSort(e.target.value as Sort)}
-            className="rounded-lg border border-border/70 bg-background/70 px-2 py-1.5 text-xs text-foreground"
+            className={`rounded-lg border border-border/70 bg-background/70 text-foreground ${
+              compact ? "px-2 py-1 text-[11px]" : "px-2 py-1.5 text-xs"
+            }`}
             title="Sort"
           >
             {SORTS.map((s) => (
@@ -220,9 +231,11 @@ export function ToolboxAssetPicker({
                 key={filter.label}
                 type="button"
                 onClick={() => void applyFilter(filter)}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border/70 bg-background/50 px-2.5 py-1.5 text-[11px] font-medium text-muted-foreground transition hover:border-primary/40 hover:bg-primary/5 hover:text-foreground"
+                className={`inline-flex shrink-0 items-center gap-1 rounded-full border border-border/70 bg-background/50 font-medium text-muted-foreground transition hover:border-primary/40 hover:bg-primary/5 hover:text-foreground ${
+                  compact ? "px-2 py-1 text-[10px]" : "px-2.5 py-1.5 text-[11px]"
+                }`}
               >
-                <FilterIcon className="h-3 w-3" />
+                <FilterIcon className={compact ? "h-2.5 w-2.5" : "h-3 w-3"} />
                 {filter.label}
               </button>
             );
@@ -237,22 +250,28 @@ export function ToolboxAssetPicker({
               if (e.key === "Enter") onSearch();
             }}
             placeholder={`Search safe free ${cat.toLowerCase()}...`}
-            className="min-w-0 flex-1 rounded-xl border border-border/70 bg-background/70 px-3 py-2 text-sm outline-none transition focus:border-primary/60 focus:ring-2 focus:ring-primary/10"
+            className={`min-w-0 flex-1 rounded-xl border border-border/70 bg-background/70 outline-none transition focus:border-primary/60 focus:ring-2 focus:ring-primary/10 ${
+              compact ? "px-2.5 py-1.5 text-xs" : "px-3 py-2 text-sm"
+            }`}
           />
           <button
             type="button"
             onClick={onSearch}
             disabled={busy}
-            className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm shadow-primary/20 hover:bg-primary/90 disabled:opacity-50"
+            className={`inline-flex items-center gap-2 rounded-xl bg-primary font-semibold text-primary-foreground shadow-sm shadow-primary/20 hover:bg-primary/90 disabled:opacity-50 ${
+              compact ? "px-3 py-1.5 text-xs" : "px-4 py-2 text-sm"
+            }`}
           >
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
             Search
           </button>
         </div>
-        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-          <ShieldCheck className="h-3.5 w-3.5 text-success" />
-          Free public Roblox-compatible assets only. Risky names are filtered before display and the plugin scans selected models.
-        </div>
+        {!compact && (
+          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <ShieldCheck className="h-3.5 w-3.5 text-success" />
+            Free public Roblox-compatible assets only. Risky names are filtered before display and the plugin scans selected models.
+          </div>
+        )}
       </section>
 
       {busy && results.length === 0 && (
@@ -269,19 +288,23 @@ export function ToolboxAssetPicker({
 
       <div
         className={`grid gap-3 ${
-          compact ? "grid-cols-1 md:grid-cols-2 xl:grid-cols-3" : "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5"
+          compact
+            ? "grid-cols-2 md:grid-cols-3 2xl:grid-cols-4"
+            : "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5"
         }`}
       >
         {results.map((asset) => (
           <div
             key={asset.id}
-            className="group flex min-w-0 flex-col overflow-hidden rounded-2xl border border-border/60 bg-surface/55 shadow-sm transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg hover:shadow-black/10"
+            className={`group flex min-w-0 flex-col overflow-hidden border border-border/60 bg-surface/55 shadow-sm transition hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg hover:shadow-black/10 ${
+              compact ? "rounded-xl" : "rounded-2xl"
+            }`}
           >
             <a
               href={asset.url}
               target="_blank"
               rel="noreferrer"
-              className={`${compact ? "h-32" : "aspect-square"} grid place-items-center overflow-hidden bg-surface-elevated`}
+              className={`${compact ? "h-20 sm:h-24" : "aspect-square"} grid place-items-center overflow-hidden bg-surface-elevated`}
             >
               {asset.thumbnail ? (
                 <img
@@ -294,36 +317,43 @@ export function ToolboxAssetPicker({
                 <Package className="h-8 w-8 text-muted-foreground" />
               )}
             </a>
-            <div className="flex flex-1 flex-col gap-1.5 p-3">
-              <h3 className="line-clamp-2 text-sm font-semibold" title={asset.name}>
+            <div className={`flex flex-1 flex-col ${compact ? "gap-1 p-2" : "gap-1.5 p-3"}`}>
+              <h3
+                className={`${compact ? "line-clamp-1 text-xs" : "line-clamp-2 text-sm"} font-semibold`}
+                title={asset.name}
+              >
                 {asset.name}
               </h3>
-              <p className="line-clamp-1 text-xs text-muted-foreground">
+              <p className={`${compact ? "text-[10px]" : "text-xs"} line-clamp-1 text-muted-foreground`}>
                 by {asset.creator || "Unknown creator"}
               </p>
-              <div className="flex flex-wrap gap-1 pt-1">
-                <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary-glow">
+              <div className={`flex flex-wrap gap-1 ${compact ? "" : "pt-1"}`}>
+                <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] font-medium text-primary-glow">
                   {asset.assetType || cat}
                 </span>
-                <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-400">
-                  Free public
-                </span>
-                <span className="rounded-full bg-surface-elevated px-2 py-0.5 text-[10px] text-muted-foreground">
+                {!compact && (
+                  <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-400">
+                    Free public
+                  </span>
+                )}
+                <span className="rounded-full bg-surface-elevated px-1.5 py-0.5 text-[9px] text-muted-foreground">
                   ID {asset.id}
                 </span>
               </div>
-              {asset.description && (
+              {asset.description && !compact && (
                 <p className="mt-1 line-clamp-2 text-xs leading-snug text-muted-foreground">
                   {asset.description}
                 </p>
               )}
-              <div className="mt-auto flex gap-1.5 pt-2">
+              <div className={`mt-auto flex gap-1.5 ${compact ? "pt-1" : "pt-2"}`}>
                 {onAdd ? (
                   <button
                     type="button"
                     onClick={() => void addAsset(asset)}
                     disabled={addingId === asset.id}
-                    className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-primary px-2 py-2 text-xs font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
+                    className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-primary px-2 font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50 ${
+                      compact ? "py-1.5 text-[11px]" : "py-2 text-xs"
+                    }`}
                   >
                     {addingId === asset.id ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -336,7 +366,9 @@ export function ToolboxAssetPicker({
                   <button
                     type="button"
                     onClick={() => void copyText(`rbxassetid://${asset.id}`, "Asset ID copied")}
-                    className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-secondary px-2 py-2 text-xs font-semibold hover:bg-secondary/80"
+                    className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-secondary px-2 font-semibold hover:bg-secondary/80 ${
+                      compact ? "py-1.5 text-[11px]" : "py-2 text-xs"
+                    }`}
                   >
                     <Copy className="h-3.5 w-3.5" /> Copy ID
                   </button>
@@ -345,7 +377,9 @@ export function ToolboxAssetPicker({
                   href={asset.url}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center justify-center rounded-lg border border-border px-2 py-2 text-xs transition hover:bg-surface-elevated"
+                  className={`inline-flex items-center justify-center rounded-lg border border-border px-2 text-xs transition hover:bg-surface-elevated ${
+                    compact ? "py-1.5" : "py-2"
+                  }`}
                   title="Open on Roblox"
                 >
                   <ExternalLink className="h-3.5 w-3.5" />
