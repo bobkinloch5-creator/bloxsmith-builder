@@ -491,6 +491,7 @@ function ProjectEditor() {
     planMode: boolean;
     webSearch: boolean;
     reasoningLevel: ReasoningLevel;
+    createdAt: number;
   };
   const [msgQueue, setMsgQueue] = useState<QueuedMsg[]>([]);
   const [editingQueueId, setEditingQueueId] = useState<string | null>(null);
@@ -1720,6 +1721,78 @@ function ProjectEditor() {
       });
   };
 
+  const saveQueuedMessage = (id: string, nextPrompt: string) => {
+    const clean = nextPrompt.trim();
+    setMsgQueue((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, prompt: clean || item.prompt } : item)),
+    );
+    setEditingQueueId(null);
+    setEditingQueueDraft("");
+    toast.success("Queued prompt updated");
+  };
+
+  const cancelQueuedMessage = (id: string) => {
+    setMsgQueue((prev) => prev.filter((item) => item.id !== id));
+    if (editingQueueId === id) {
+      setEditingQueueId(null);
+      setEditingQueueDraft("");
+    }
+    toast.message("Removed from queue");
+  };
+
+  const moveQueuedMessage = (id: string, direction: -1 | 1) => {
+    setMsgQueue((prev) => {
+      const index = prev.findIndex((item) => item.id === id);
+      if (index < 0) return prev;
+      const nextIndex = index + direction;
+      if (nextIndex < 0 || nextIndex >= prev.length) return prev;
+      const next = [...prev];
+      [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+      return next;
+    });
+  };
+
+  const moveQueuedMessageToFront = (id: string) => {
+    setMsgQueue((prev) => {
+      const item = prev.find((entry) => entry.id === id);
+      if (!item) return prev;
+      return [item, ...prev.filter((entry) => entry.id !== id)];
+    });
+    toast.message("Moved to next up");
+  };
+
+  const sendQueuedMessageNow = (id: string) => {
+    moveQueuedMessageToFront(id);
+    if (aiBusy) {
+      stopGeneration();
+      toast.message("Stopped the current run. This queued message will run next.");
+      return;
+    }
+    const next = msgQueue.find((item) => item.id === id);
+    if (!next) return;
+    setMsgQueue((prev) => prev.filter((item) => item.id !== id));
+    void runQueuedMessage(next);
+  };
+
+  const restoreQueuedMessageToDraft = (id: string) => {
+    const item = msgQueue.find((entry) => entry.id === id);
+    if (!item) return;
+    setPrompt((current) => {
+      const base = current.trim();
+      if (!base) return item.prompt;
+      return `${base}\n\n${item.prompt}`;
+    });
+    setAttachments((current) => [...current, ...item.attachments].slice(0, MAX_ATTACHMENTS));
+    toggleChatMode(item.chatMode);
+    setPlanMode(item.planMode);
+    setWebSearch(item.webSearch);
+    setReasoning(item.reasoningLevel);
+    setMsgQueue((prev) => prev.filter((entry) => entry.id !== id));
+    setEditingQueueId(null);
+    setEditingQueueDraft("");
+    toast.message("Moved queued prompt back to the draft");
+  };
+
   const send = async () => {
     if (!prompt.trim() && attachments.length === 0) return;
     if (aiUsageBlocked) {
@@ -1749,6 +1822,7 @@ function ProjectEditor() {
       planMode,
       webSearch,
       reasoningLevel,
+      createdAt: Date.now(),
     };
     setPrompt("");
     setAttachments([]);
@@ -1786,6 +1860,7 @@ function ProjectEditor() {
       planMode: false,
       webSearch,
       reasoningLevel,
+      createdAt: Date.now(),
     };
     if (aiBusy) {
       setMsgQueue((prev) => [...prev, queued]);
@@ -3352,16 +3427,24 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                   </div>
                 )}
                 {msgQueue.length > 0 && (
-                  <div className="mb-2 space-y-1.5 rounded-lg border border-border/40 bg-surface/40 p-2">
-                    <div className="flex items-center justify-between px-1">
-                      <div className="text-[11px] font-semibold text-muted-foreground">
-                        Queued ({msgQueue.length}) — will send after current reply
+                  <div className="mb-2 space-y-2 rounded-xl border border-amber-400/25 bg-amber-500/5 p-2.5">
+                    <div className="flex items-center justify-between gap-2 px-1">
+                      <div>
+                        <div className="text-xs font-semibold text-foreground">
+                          Chat Queue ({msgQueue.length})
+                        </div>
+                        <div className="text-[11px] text-muted-foreground">
+                          {aiBusy
+                            ? "Keep typing — queued prompts run in order after this reply."
+                            : "Ready to run the next queued prompt."}
+                        </div>
                       </div>
                       <button
                         type="button"
                         onClick={() => {
                           setMsgQueue([]);
                           setEditingQueueId(null);
+                          setEditingQueueDraft("");
                         }}
                         className="text-[11px] text-muted-foreground hover:text-rose-300 transition"
                         title="Clear all queued messages"
@@ -3375,69 +3458,91 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                       return (
                         <div
                           key={q.id}
-                          className="group flex items-start gap-2 rounded-md bg-background/50 px-2 py-1.5 text-xs"
+                          className={`group flex items-start gap-2 rounded-lg border px-2 py-2 text-xs ${
+                            idx === 0
+                              ? "border-amber-400/35 bg-amber-500/10"
+                              : "border-border/40 bg-background/50"
+                          }`}
                         >
                           <span className="mt-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary/15 px-1.5 text-[10px] font-semibold text-primary">
                             {idx + 1}
                           </span>
-                          <span className="mt-0.5 rounded bg-surface px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                            {tag}
-                          </span>
-                          {isEditing ? (
-                            <textarea
-                              value={editingQueueDraft}
-                              onChange={(e) => setEditingQueueDraft(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter" && !e.shiftKey) {
-                                  e.preventDefault();
-                                  setMsgQueue((prev) =>
-                                    prev.map((m) =>
-                                      m.id === q.id
-                                        ? { ...m, prompt: editingQueueDraft.trim() || m.prompt }
-                                        : m,
-                                    ),
-                                  );
-                                  setEditingQueueId(null);
-                                }
-                                if (e.key === "Escape") setEditingQueueId(null);
-                              }}
-                              rows={2}
-                              className="flex-1 resize-none rounded bg-background/80 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary/50"
-                              autoFocus
-                            />
-                          ) : (
-                            <span className="flex-1 break-words text-foreground/90 line-clamp-2">
-                              {q.prompt || "(image-only message)"}
-                              {q.attachments.length > 0 && (
-                                <span className="ml-1 text-muted-foreground">
-                                  · {q.attachments.length} image
-                                  {q.attachments.length === 1 ? "" : "s"}
+                          <div className="min-w-0 flex-1 space-y-1">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <span
+                                className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                                  idx === 0
+                                    ? "bg-amber-400/15 text-amber-200"
+                                    : "bg-surface text-muted-foreground"
+                                }`}
+                              >
+                                {idx === 0 ? "Next up" : "Waiting"}
+                              </span>
+                              <span className="rounded bg-surface px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                                {tag}
+                              </span>
+                              <span className="rounded bg-surface px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                                {getReasoningLevel(q.reasoningLevel).shortLabel}
+                              </span>
+                              {q.webSearch && (
+                                <span className="rounded bg-sky-500/10 px-1.5 py-0.5 text-[10px] text-sky-300">
+                                  Web
                                 </span>
                               )}
-                            </span>
-                          )}
-                          <div className="flex shrink-0 items-center gap-1">
+                              <span className="text-[10px] text-muted-foreground/70">
+                                Queued{" "}
+                                {new Date(q.createdAt).toLocaleTimeString([], {
+                                  hour: "numeric",
+                                  minute: "2-digit",
+                                })}
+                              </span>
+                            </div>
+                            {isEditing ? (
+                              <textarea
+                                value={editingQueueDraft}
+                                onChange={(e) => setEditingQueueDraft(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" && !e.shiftKey) {
+                                    e.preventDefault();
+                                    saveQueuedMessage(q.id, editingQueueDraft);
+                                  }
+                                  if (e.key === "Escape") {
+                                    setEditingQueueId(null);
+                                    setEditingQueueDraft("");
+                                  }
+                                }}
+                                rows={3}
+                                className="w-full resize-none rounded bg-background/80 px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-primary/50"
+                                autoFocus
+                              />
+                            ) : (
+                              <div className="break-words text-foreground/90 line-clamp-3">
+                                {q.prompt || "(image-only message)"}
+                                {q.attachments.length > 0 && (
+                                  <span className="ml-1 text-muted-foreground">
+                                    · {q.attachments.length} image
+                                    {q.attachments.length === 1 ? "" : "s"}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
                             {isEditing ? (
                               <>
                                 <button
                                   type="button"
-                                  onClick={() => {
-                                    setMsgQueue((prev) =>
-                                      prev.map((m) =>
-                                        m.id === q.id
-                                          ? { ...m, prompt: editingQueueDraft.trim() || m.prompt }
-                                          : m,
-                                      ),
-                                    );
-                                    setEditingQueueId(null);
-                                  }}
+                                  onClick={() => saveQueuedMessage(q.id, editingQueueDraft)}
                                   className="rounded px-1.5 py-0.5 text-[10px] font-semibold text-primary hover:bg-primary/10"
                                 >
                                   Save
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => setEditingQueueId(null)}
+                                  onClick={() => {
+                                    setEditingQueueId(null);
+                                    setEditingQueueDraft("");
+                                  }}
                                   className="rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-surface"
                                 >
                                   Cancel
@@ -3445,6 +3550,53 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                               </>
                             ) : (
                               <>
+                                <button
+                                  type="button"
+                                  onClick={() => sendQueuedMessageNow(q.id)}
+                                  className="rounded px-1.5 py-0.5 text-[10px] font-semibold text-primary hover:bg-primary/10"
+                                  title={
+                                    aiBusy
+                                      ? "Stop the current run and make this message run next"
+                                      : "Run this queued message now"
+                                  }
+                                >
+                                  Run now
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => moveQueuedMessageToFront(q.id)}
+                                  disabled={idx === 0}
+                                  className="rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-surface disabled:opacity-35"
+                                  title="Move to next up"
+                                >
+                                  Next
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => moveQueuedMessage(q.id, -1)}
+                                  disabled={idx === 0}
+                                  className="rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-surface disabled:opacity-35"
+                                  title="Move up"
+                                >
+                                  Up
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => moveQueuedMessage(q.id, 1)}
+                                  disabled={idx === msgQueue.length - 1}
+                                  className="rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-surface disabled:opacity-35"
+                                  title="Move down"
+                                >
+                                  Down
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => restoreQueuedMessageToDraft(q.id)}
+                                  className="rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-surface"
+                                  title="Move this queued prompt back into the draft box"
+                                >
+                                  Draft
+                                </button>
                                 <button
                                   type="button"
                                   onClick={() => {
@@ -3458,13 +3610,11 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() =>
-                                    setMsgQueue((prev) => prev.filter((m) => m.id !== q.id))
-                                  }
+                                  onClick={() => cancelQueuedMessage(q.id)}
                                   className="rounded p-1 text-muted-foreground hover:bg-rose-500/15 hover:text-rose-300"
-                                  title="Remove from queue"
+                                  title="Cancel queued message"
                                 >
-                                  <Square className="h-3 w-3" />
+                                  <X className="h-3 w-3" />
                                 </button>
                               </>
                             )}
@@ -3641,14 +3791,25 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                     </button>
                   </div>
                   {aiBusy ? (
-                    <button
-                      onClick={stopGeneration}
-                      className="inline-flex h-8 items-center gap-2 rounded-lg bg-rose-500/90 px-3 text-xs font-semibold text-white hover:bg-rose-500 transition"
-                      title="Stop generating"
-                    >
-                      <Square className="h-3.5 w-3.5 fill-current" />
-                      Stop
-                    </button>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <button
+                        onClick={stopGeneration}
+                        className="inline-flex h-8 items-center gap-2 rounded-lg bg-rose-500/90 px-3 text-xs font-semibold text-white hover:bg-rose-500 transition"
+                        title="Stop generating"
+                      >
+                        <Square className="h-3.5 w-3.5 fill-current" />
+                        Stop
+                      </button>
+                      <button
+                        onClick={send}
+                        disabled={aiUsageBlocked || (!prompt.trim() && attachments.length === 0)}
+                        className="inline-flex h-8 items-center gap-2 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground hover:opacity-90 transition disabled:opacity-30"
+                        title="Queue this prompt after the current AI reply"
+                      >
+                        <Send className="h-3.5 w-3.5" />
+                        Queue
+                      </button>
+                    </div>
                   ) : (
                     <button
                       onClick={send}

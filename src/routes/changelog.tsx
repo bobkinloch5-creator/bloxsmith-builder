@@ -48,6 +48,39 @@ const tagStyles = {
 
 export const changelogItems = [
   {
+    version: "v3.10.2",
+    date: "June 10, 2026",
+    title: "Advanced AI Chat Queue & MCP Reliability Pass",
+    description:
+      "Project chat now lets creators keep typing while the AI is working, manage queued prompts before they run, and see clearer MCP/server status while building.",
+    updates: [
+      {
+        category: "AI",
+        tagColor: tagStyles.ai,
+        icon: MessageSquare,
+        title: "Editable Chat Queue",
+        detail:
+          "Users can keep sending prompts while BloxSmith is generating. Each queued message shows Waiting or Next up, preserves chat/build/plan mode, reasoning level, web-search state, and attachments, then runs in order after the current request finishes.",
+      },
+      {
+        category: "UI",
+        tagColor: tagStyles.ui,
+        icon: Clock,
+        title: "Queue Controls",
+        detail:
+          "Queued prompts can be edited, canceled, moved up or down, promoted to Next up, moved back into the draft box, or run immediately by stopping the current generation and placing the selected message first.",
+      },
+      {
+        category: "Integrations",
+        tagColor: tagStyles.integrations,
+        icon: Server,
+        title: "MCP Server Confidence",
+        detail:
+          "The project chat and MCP settings continue to preserve connected server state, test enabled servers, and make it clearer when external MCP tools are available to the AI for advanced project work.",
+      },
+    ],
+  },
+  {
     version: "v3.10.1",
     date: "June 6, 2026",
     title: "Hardened UI Studio Handoff & Consistent Starter Credits",

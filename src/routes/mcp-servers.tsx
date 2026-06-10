@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { Trash2, Plus, Plug, CheckCircle2, XCircle, Loader2 } from "lucide-react";
-import { testMcpServer } from "@/lib/mcp-test.functions";
+import { retestAllMcpServers, testMcpServer } from "@/lib/mcp-test.functions";
 
 type Server = {
   id: string;
@@ -56,8 +56,10 @@ function McpServersPage() {
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({ name: "", url: "", auth_header: "" });
   const [saving, setSaving] = useState(false);
+  const [retestingAll, setRetestingAll] = useState(false);
   const [tests, setTests] = useState<Record<string, TestState>>({});
   const runTest = useServerFn(testMcpServer);
+  const runRetestAll = useServerFn(retestAllMcpServers);
 
   const load = async () => {
     setLoading(true);
@@ -176,6 +178,37 @@ function McpServersPage() {
     load();
   };
 
+  const retestAll = async () => {
+    setRetestingAll(true);
+    setTests((prev) => {
+      const next = { ...prev };
+      for (const s of servers) {
+        if (s.enabled) next[s.id] = { status: "loading" };
+      }
+      return next;
+    });
+    try {
+      const res = await runRetestAll({ data: undefined as any });
+      setTests((prev) => {
+        const next = { ...prev };
+        for (const r of res.results ?? []) {
+          next[r.id] = r.ok
+            ? { status: "ok", toolCount: r.toolCount ?? 0 }
+            : { status: "fail", error: r.error ?? "Test failed" };
+        }
+        return next;
+      });
+      toast.success(
+        `Tested ${res.tested} MCP server${res.tested === 1 ? "" : "s"}: ${res.ok} live, ${res.failed} failed.`,
+      );
+      load();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Could not test MCP servers");
+    } finally {
+      setRetestingAll(false);
+    }
+  };
+
   return (
     <main className="min-h-screen bg-background text-foreground">
       <div className="max-w-3xl mx-auto px-6 py-12 space-y-8">
@@ -265,7 +298,27 @@ function McpServersPage() {
         </form>
 
         <section className="space-y-3">
-          <h2 className="text-lg font-semibold">Connected servers</h2>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold">Connected servers</h2>
+              <p className="text-xs text-muted-foreground">
+                Enabled servers are tested with MCP initialize, initialized, and tools/list.
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={retestAll}
+              disabled={retestingAll || servers.every((s) => !s.enabled)}
+            >
+              {retestingAll ? (
+                <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+              ) : (
+                <Plug className="h-3.5 w-3.5 mr-1" />
+              )}
+              Retest all
+            </Button>
+          </div>
           {loading ? (
             <p className="text-muted-foreground text-sm">Loading…</p>
           ) : servers.length === 0 ? (

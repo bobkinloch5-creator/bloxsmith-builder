@@ -360,6 +360,11 @@ const features = [
     desc: "Describe a game idea and get real playable Roblox systems — not random snippets.",
   },
   {
+    icon: MessageSquare,
+    title: "Chat Queue",
+    desc: "Keep typing while the AI works, edit queued prompts, cancel them, or run one next.",
+  },
+  {
     icon: Plug,
     title: "Roblox Studio Plugin",
     desc: "Push scripts, models, UI, and actions into Studio with the plugin.",
@@ -368,6 +373,11 @@ const features = [
     icon: Brain,
     title: "Project Memory",
     desc: "BloxSmith remembers your project and helps continue your build.",
+  },
+  {
+    icon: Terminal,
+    title: "MCP Tool Servers",
+    desc: "Connect external MCP tools so the AI can use your approved servers while planning.",
   },
   {
     icon: Wrench,
