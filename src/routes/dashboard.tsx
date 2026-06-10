@@ -75,7 +75,7 @@ function Dashboard() {
 
   const refreshCredits = async () => {
     if (!user) return;
-    const { data } = await supabase.from("profiles").select("credits").eq("id", user.id).single();
+    const { data } = await (supabase as any).rpc("get_my_profile");
     if (data && profile) (profile as { credits: number }).credits = data.credits;
   };
 
