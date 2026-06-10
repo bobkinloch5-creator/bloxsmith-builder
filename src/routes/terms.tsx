@@ -72,8 +72,8 @@ export const Route = createFileRoute("/terms")({
               before you spend them.
             </li>
             <li>
-              You may buy credits through PayPal. Prices are listed on the Pricing page and may be
-              updated from time to time.
+              You may buy credits through PayPal or supported crypto payments such as Litecoin.
+              Prices are listed on the Pricing page and may be updated from time to time.
             </li>
             <li>
               Credits are a limited, non-transferable license to access AI capacity. They have no

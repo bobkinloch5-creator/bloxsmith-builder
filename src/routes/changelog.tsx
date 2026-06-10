@@ -48,6 +48,31 @@ const tagStyles = {
 
 export const changelogItems = [
   {
+    version: "v3.10.8",
+    date: "June 10, 2026",
+    title: "Litecoin Crypto Payments",
+    description:
+      "BloxSmith checkout now supports manual Litecoin payments alongside PayPal for every credit pack and custom credit amount.",
+    updates: [
+      {
+        category: "Backend",
+        tagColor: tagStyles.backend,
+        icon: CreditCard,
+        title: "Crypto Payment Instructions",
+        detail:
+          "Checkout pages now show the Litecoin wallet address, USD total, estimated LTC amount, payment memo, and copy buttons so users know exactly what to send.",
+      },
+      {
+        category: "UI",
+        tagColor: tagStyles.ui,
+        icon: Zap,
+        title: "PayPal or Litecoin Verification",
+        detail:
+          "Users can submit either a PayPal transaction ID or a Litecoin transaction hash for manual approval, and admin payment reviews now label the field as a generic payment reference.",
+      },
+    ],
+  },
+  {
     version: "v3.10.7",
     date: "June 10, 2026",
     title: "Toolbox Insert Reliability",

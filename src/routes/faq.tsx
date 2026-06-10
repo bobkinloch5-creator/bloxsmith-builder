@@ -48,15 +48,15 @@ const QA = [
   },
   {
     q: "How do I pay?",
-    a: "We accept PayPal. On the checkout page, click the PayPal button to send payment to paypal.me/kinloch930, then paste your PayPal Transaction ID for verification.",
+    a: "We accept PayPal and Litecoin. On the checkout page, send the exact displayed amount, then paste your PayPal Transaction ID or Litecoin transaction hash for verification.",
   },
   {
     q: "How long does verification take?",
-    a: "Usually a few hours. Once an admin confirms your payment in PayPal, credits are added to your account automatically and you'll see them on the dashboard.",
+    a: "Usually a few hours. Once an admin confirms your PayPal or Litecoin payment, credits are added to your account automatically and you'll see them on the dashboard.",
   },
   {
-    q: "What if I don't add the transaction ID?",
-    a: "Credits will not be added until we can match your PayPal payment. Always submit the Transaction ID from your PayPal receipt email.",
+    q: "What if I don't add the transaction ID or hash?",
+    a: "Credits will not be added until we can match your payment. Always submit the PayPal Transaction ID or Litecoin transaction hash from your wallet.",
   },
   { q: "Do credits expire?", a: "No. Credits never expire." },
   {

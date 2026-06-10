@@ -72,7 +72,8 @@ export const Route = createFileRoute("/privacy")({
             </li>
             <li>
               <span className="text-foreground font-medium">Payment data</span> — when you buy
-              credits we collect a PayPal transaction ID, amount, and pack ID. We do{" "}
+              credits we collect a PayPal transaction ID or crypto transaction hash, amount, pack
+              ID, and payment notes needed for verification. We do{" "}
               <span className="text-foreground font-medium">not</span> store full payment card
               numbers — those are handled exclusively by PayPal.
             </li>

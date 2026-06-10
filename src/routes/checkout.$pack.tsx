@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { Header, Footer } from "@/components/layout";
 import { useAuth } from "@/lib/auth-context";
 import { CREDIT_PACKS } from "@/lib/credits";
+import { CryptoPaymentPanel } from "@/components/CryptoPaymentPanel";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -43,6 +44,7 @@ function Checkout() {
   const p = CREDIT_PACKS.find((x) => x.id === pack);
   const [txId, setTxId] = useState("");
   const [note, setNote] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<"paypal" | "litecoin">("paypal");
   const [discountCode, setDiscountCode] = useState("");
   const [discount, setDiscount] = useState<DiscountPreview | null>(null);
   const [checkingDiscount, setCheckingDiscount] = useState(false);
@@ -107,23 +109,29 @@ function Checkout() {
   const submit = async () => {
     if (!user) return;
     if (txId.trim().length < 6) {
-      toast.error("Enter a valid PayPal transaction ID");
+      toast.error("Enter a valid PayPal transaction ID or Litecoin transaction hash");
       return;
     }
+    const paymentNote = [
+      `Payment method: ${paymentMethod === "litecoin" ? "Litecoin" : "PayPal"}`,
+      note.trim(),
+    ]
+      .filter(Boolean)
+      .join(" | ");
     setSubmitting(true);
     const { error } = await (supabase as any).rpc("submit_payment_request", {
       _pack_id: p.id,
       _credits: p.credits,
       _amount: p.price,
       _paypal_transaction_id: txId.trim(),
-      _paypal_note: note.trim() || null,
+      _paypal_note: paymentNote || null,
       _discount_code: discount?.valid ? (discount.code ?? discountCode.trim()) : null,
     });
     setSubmitting(false);
     if (error) {
       const messages: Record<string, string> = {
-        transaction_id_already_submitted: "That PayPal transaction ID has already been submitted.",
-        invalid_transaction_id: "Enter the PayPal transaction ID from your receipt.",
+        transaction_id_already_submitted: "That transaction reference has already been submitted.",
+        invalid_transaction_id: "Enter the PayPal transaction ID or Litecoin transaction hash.",
         discount_code_not_found: "That discount code was not found.",
         discount_code_disabled: "That discount code is disabled.",
         discount_code_expired: "That discount code expired.",
@@ -216,7 +224,7 @@ function Checkout() {
             <p className="text-sm text-muted-foreground mt-1">
               Pay{" "}
               <span className="font-semibold text-foreground">${finalPrice.toFixed(2)} USD</span>{" "}
-              via PayPal to:
+              with PayPal or Litecoin.
             </p>
             <a
               href={paypalUrl}
@@ -233,14 +241,20 @@ function Checkout() {
               </code>
             </p>
           </div>
+          <CryptoPaymentPanel
+            amountUsd={finalPrice}
+            credits={totalCredits}
+            packId={p.id}
+            userEmail={user?.email}
+          />
         </div>
 
         <div className="glass rounded-2xl p-6 space-y-4">
           <div>
             <h2 className="font-semibold">Step 2 — Submit for verification</h2>
             <p className="text-sm text-muted-foreground mt-1">
-              Paste your PayPal Transaction ID from the receipt email. BloxSmith locks the ID to
-              your account and credits are added as soon as the payment is verified.
+              Paste your PayPal Transaction ID or Litecoin transaction hash. BloxSmith locks the
+              reference to your account and credits are added as soon as the payment is verified.
             </p>
           </div>
           {submitted ? (
@@ -255,15 +269,43 @@ function Checkout() {
             </div>
           ) : (
             <>
+              <div className="grid grid-cols-2 gap-2 rounded-xl border border-border bg-surface/40 p-1 text-sm">
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod("paypal")}
+                  className={`rounded-lg px-3 py-2 font-semibold transition ${
+                    paymentMethod === "paypal"
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  PayPal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod("litecoin")}
+                  className={`rounded-lg px-3 py-2 font-semibold transition ${
+                    paymentMethod === "litecoin"
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  Litecoin
+                </button>
+              </div>
               <label htmlFor="pack-tx-id" className="sr-only">
-                PayPal Transaction ID
+                Payment transaction reference
               </label>
               <input
                 id="pack-tx-id"
-                aria-label="PayPal Transaction ID"
+                aria-label="Payment transaction reference"
                 value={txId}
                 onChange={(e) => setTxId(e.target.value)}
-                placeholder="PayPal Transaction ID (e.g. 7AB12345CD678901E)"
+                placeholder={
+                  paymentMethod === "litecoin"
+                    ? "Litecoin transaction hash"
+                    : "PayPal Transaction ID (e.g. 7AB12345CD678901E)"
+                }
                 className="w-full rounded-lg bg-surface-elevated border border-border px-3 py-2 text-sm"
               />
               <label htmlFor="pack-note" className="sr-only">
@@ -274,7 +316,11 @@ function Checkout() {
                 aria-label="Optional note about the payment"
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                placeholder="Optional note (e.g. PayPal email used)"
+                placeholder={
+                  paymentMethod === "litecoin"
+                    ? "Optional note (wallet used, exact LTC sent, or block explorer link)"
+                    : "Optional note (e.g. PayPal email used)"
+                }
                 className="w-full rounded-lg bg-surface-elevated border border-border px-3 py-2 text-sm min-h-[80px]"
               />
               <button

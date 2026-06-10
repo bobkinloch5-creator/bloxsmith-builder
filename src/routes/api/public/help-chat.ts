@@ -110,7 +110,7 @@ function localHelpAnswer(message: string): string {
   }
 
   if (/credit|price|cost|paypal|pay/.test(q)) {
-    return "BloxSmith uses credits for AI builds and plugin actions. Check /pricing for current packs, PayPal options, and any free-credit offers.";
+    return "BloxSmith uses credits for AI builds and plugin actions. Check /pricing for current packs, PayPal and Litecoin crypto options, and any free-credit offers.";
   }
 
   if (/mcp|claude|cursor|codex|external/.test(q)) {

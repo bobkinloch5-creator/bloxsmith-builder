@@ -3,6 +3,11 @@ import { useState } from "react";
 import { Header, Footer } from "@/components/layout";
 import { CREDIT_PACKS } from "@/lib/credits";
 import { CreditCostBreakdown } from "@/components/CreditCostBreakdown";
+import {
+  formatLtcAmount,
+  LITECOIN_FALLBACK_USD_RATE,
+  LITECOIN_PAYMENT_ADDRESS,
+} from "@/lib/crypto-payments";
 
 export const Route = createFileRoute("/pricing")({
   component: Pricing,
@@ -111,6 +116,9 @@ function Pricing() {
                     <span className="ml-1 text-muted-foreground/70 line-through">{p.credits}</span>
                   )}
                 </div>
+                <div className="mt-2 rounded-lg border border-primary/15 bg-primary/5 px-2 py-1 text-[11px] text-muted-foreground">
+                  Crypto: est. {formatLtcAmount(p.price, LITECOIN_FALLBACK_USD_RATE)} LTC
+                </div>
                 <Link
                   to="/checkout/$pack"
                   params={{ pack: p.id }}
@@ -128,7 +136,7 @@ function Pricing() {
           <div>
             <h3 className="font-semibold">Custom amount</h3>
             <p className="text-sm text-muted-foreground">
-              Pick exactly what you need — $0.05 / credit.
+              Pick exactly what you need — $0.05 / credit. PayPal and Litecoin accepted.
             </p>
           </div>
           <Link
@@ -139,12 +147,24 @@ function Pricing() {
           </Link>
         </div>
 
+        <div className="mt-6 rounded-2xl border border-primary/25 bg-primary/5 p-5">
+          <h3 className="font-semibold">We take crypto now</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Litecoin payments are available on every checkout page. Each pack shows the USD total,
+            estimated LTC amount, and the wallet address before you submit your transaction hash.
+          </p>
+          <div className="mt-3 break-all rounded-xl border border-border/60 bg-background/45 px-3 py-2 font-mono text-xs text-foreground">
+            {LITECOIN_PAYMENT_ADDRESS}
+          </div>
+        </div>
+
         <div className="mt-10">
           <CreditCostBreakdown />
         </div>
 
         <p className="mt-6 text-center text-xs text-muted-foreground">
-          PayPal · paste your transaction ID after payment and credits are added after verification.
+          PayPal or Litecoin · paste your transaction ID/hash after payment and credits are added
+          after verification.
         </p>
       </main>
       <Footer />

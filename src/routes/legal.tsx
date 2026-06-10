@@ -57,8 +57,8 @@ export const Route = createFileRoute("/legal")({
             </li>
             <li>
               <span className="text-foreground font-medium">Unauthorized purchases</span> — if your
-              account or PayPal was charged without your authorization, contact us within 14 days
-              with proof and we will investigate and, where warranted, refund.
+              account, PayPal, or crypto wallet was charged without your authorization, contact us
+              within 14 days with proof and we will investigate and, where warranted, refund.
             </li>
             <li>
               <span className="text-foreground font-medium">Mandatory consumer rights</span> — where
@@ -67,14 +67,16 @@ export const Route = createFileRoute("/legal")({
             </li>
           </ul>
           <p>
-            Manual PayPal payments that have not yet been approved by staff can be cancelled by
-            request. Approved purchases that have not been spent may be refunded at our discretion
-            within 7 days of approval, minus any PayPal processing fees.
+            Manual PayPal or Litecoin payments that have not yet been approved by staff can be
+            cancelled by request. Approved purchases that have not been spent may be refunded at our
+            discretion within 7 days of approval, minus any PayPal processing fees or crypto network
+            costs.
           </p>
           <p>
             To request a refund, email{" "}
             <a className="underline" href="mailto:community100x@gmail.com">community100x@gmail.com</a>{" "}
-            with your account email, transaction ID, and a short description.
+            with your account email, transaction ID or crypto transaction hash, and a short
+            description.
           </p>
         </Section>
 

@@ -651,7 +651,7 @@ function Admin() {
                         </div>
                       )}
                       <div>
-                        <span className="text-muted-foreground">PayPal Tx:</span>{" "}
+                        <span className="text-muted-foreground">Payment ref:</span>{" "}
                         <code className="bg-surface-elevated px-1 rounded">
                           {r.paypal_transaction_id}
                         </code>
