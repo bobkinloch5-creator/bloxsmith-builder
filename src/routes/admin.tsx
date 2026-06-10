@@ -11,6 +11,7 @@ import {
   adminResetAiUsageFn,
   adminReviewPaymentFn,
   adminReviewPromotionFn,
+  adminReviewSubscriptionFn,
   adminSetBanFn,
   adminSetCreditBalanceFn,
   adminSetRoleFn,
@@ -67,6 +68,18 @@ type PR = {
   status: string;
   created_at: string;
 };
+type SubscriptionRequest = {
+  id: string;
+  user_id: string;
+  plan_id: string;
+  amount: number;
+  currency: string;
+  crypto_currency: string;
+  payment_reference: string;
+  payment_note: string | null;
+  status: string;
+  created_at: string;
+};
 type Promo = {
   id: string;
   code: string;
@@ -118,9 +131,11 @@ function Admin() {
     generations: number;
     banned: number;
     pendingPayments: number;
+    pendingSubscriptions: number;
     pendingPromotions: number;
   } | null>(null);
   const [requests, setRequests] = useState<PR[]>([]);
+  const [subscriptionRequests, setSubscriptionRequests] = useState<SubscriptionRequest[]>([]);
   const [emails, setEmails] = useState<Record<string, string>>({});
   const [promos, setPromos] = useState<Promo[]>([]);
   const [newCode, setNewCode] = useState("");
@@ -152,6 +167,7 @@ function Admin() {
   const updatePromoServer = useServerFn(adminUpdatePromoFn);
   const deletePromoServer = useServerFn(adminDeletePromoFn);
   const reviewPaymentServer = useServerFn(adminReviewPaymentFn);
+  const reviewSubscriptionServer = useServerFn(adminReviewSubscriptionFn);
   const reviewPromotionServer = useServerFn(adminReviewPromotionFn);
 
   const loadUsers = async () => {
@@ -165,6 +181,7 @@ function Admin() {
       setRows(users);
       setStats(data.stats);
       setRequests((data.paymentRequests ?? []) as PR[]);
+      setSubscriptionRequests((data.subscriptionRequests ?? []) as SubscriptionRequest[]);
       setPromos((data.promos ?? []) as Promo[]);
       setPromoSubs((data.promotionSubmissions ?? []) as PromoSub[]);
       setActivity((data.creditActivity ?? []) as Activity[]);
@@ -423,6 +440,23 @@ function Admin() {
     }
   };
 
+  const reviewSubscription = async (request: SubscriptionRequest, approve: boolean) => {
+    if (!user) return;
+    const reason = approve
+      ? "Approved by owner"
+      : window.prompt("Reason for rejecting this Pro payment?", "Payment could not be verified");
+    if (!approve && !reason) return;
+    try {
+      await reviewSubscriptionServer({
+        data: { requestId: request.id, approve, reason: reason || "" },
+      });
+      toast.success(approve ? "Approved Pro month and bonus credits" : "Rejected Pro request");
+      await loadUsers();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not review Pro request.");
+    }
+  };
+
   const adjustCredits = async (id: string, delta: number, reason = "admin adjust") => {
     if (!isOwner) {
       toast.error("Only the owner can adjust credits.");
@@ -572,13 +606,14 @@ function Admin() {
         )}
 
         {stats && (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
             {[
               ["Users", stats.users],
               ["Projects", stats.projects],
               ["Generations", stats.generations],
               ["Banned", stats.banned],
               ["Payments", stats.pendingPayments],
+              ["Pro", stats.pendingSubscriptions],
               ["Promotions", stats.pendingPromotions],
             ].map(([l, v]) => (
               <div key={l as string} className="glass rounded-2xl p-5">
@@ -599,6 +634,79 @@ function Admin() {
         <ModelDiagnosticsSection />
 
         <RobloxDocsPanel />
+
+        {isOwner && (
+          <section className="glass rounded-2xl p-6">
+            <div className="flex justify-between items-center mb-3">
+              <div>
+                <h2 className="font-semibold">
+                  Pending Pro subscriptions ({subscriptionRequests.length})
+                </h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Approving adds one Pro month, unlocks premium models, and grants monthly bonus
+                  credits.
+                </p>
+              </div>
+            </div>
+            {subscriptionRequests.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No pending Pro subscriptions.</p>
+            ) : (
+              <div className="space-y-3">
+                {subscriptionRequests.map((request) => (
+                  <div
+                    key={request.id}
+                    className="rounded-xl border border-border p-4 flex flex-wrap gap-3 justify-between items-center"
+                  >
+                    <div className="text-sm space-y-1">
+                      <div>
+                        <span className="text-muted-foreground">User:</span>{" "}
+                        <span className="font-medium">
+                          {emails[request.user_id] ?? request.user_id}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Plan:</span>{" "}
+                        {request.plan_id} —{" "}
+                        <span className="font-semibold">
+                          ${Number(request.amount).toFixed(2)} {request.currency}
+                        </span>{" "}
+                        via {request.crypto_currency}
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Payment hash:</span>{" "}
+                        <code className="bg-surface-elevated px-1 rounded break-all">
+                          {request.payment_reference}
+                        </code>
+                      </div>
+                      {request.payment_note && (
+                        <div className="text-xs text-muted-foreground">
+                          Note: {request.payment_note}
+                        </div>
+                      )}
+                      <div className="text-xs text-muted-foreground">
+                        {new Date(request.created_at).toLocaleString()}
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => reviewSubscription(request, true)}
+                        className="rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground"
+                      >
+                        Approve Pro
+                      </button>
+                      <button
+                        onClick={() => reviewSubscription(request, false)}
+                        className="rounded-lg border border-border px-3 py-1.5 text-sm"
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
 
         {isOwner && (
           <section className="glass rounded-2xl p-6">

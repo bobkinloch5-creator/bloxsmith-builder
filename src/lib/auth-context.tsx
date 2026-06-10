@@ -5,6 +5,7 @@ import { useRouter } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { recordAndEnforceSingleAccount } from "@/lib/account-guard.functions";
 import { getDeviceFingerprint } from "@/lib/device-fingerprint";
+import { isSubscriptionCurrentlyPro, type SubscriptionSummary } from "@/lib/subscriptions";
 import { toast } from "sonner";
 
 type Profile = {
@@ -59,6 +60,8 @@ type AuthCtx = {
   profile: Profile | null;
   roles: Role[];
   isOwner: boolean;
+  isPro: boolean;
+  subscription: SubscriptionSummary | null;
   isAdmin: boolean;
   isModerator: boolean;
   loading: boolean;
@@ -122,6 +125,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [roles, setRoles] = useState<Role[]>([]);
+  const [subscription, setSubscription] = useState<SubscriptionSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const authReadyRef = useRef(false);
   const router = useRouter();
@@ -151,9 +155,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.warn("[auth] profile self-heal skipped:", ensureError.message ?? ensureError);
       }
 
-      const [profileRes, { data: r }] = await Promise.all([
+      const [profileRes, { data: r }, subscriptionRes] = await Promise.all([
         (supabase as any).rpc("get_my_profile"),
         (supabase as any).from("user_roles").select("role").eq("user_id", uid),
+        (supabase as any)
+          .from("user_subscriptions")
+          .select("plan_id,status,current_period_end,cancel_at_period_end")
+          .eq("user_id", uid)
+          .maybeSingle(),
       ]);
 
       let p = profileRes.data as Partial<Profile> | null;
@@ -177,11 +186,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const hydratedProfile = await refreshSignedProfileMediaUrls(p);
       setProfile(withProfileDefaults(hydratedProfile, resolvedEmail || ""));
       setRoles(((r ?? []) as { role: Role }[]).map((x) => x.role));
+      if (subscriptionRes.error && !/does not exist|schema cache/i.test(subscriptionRes.error.message)) {
+        console.warn("[auth] subscription load skipped:", subscriptionRes.error.message);
+      }
+      const subRow = subscriptionRes.data as any;
+      setSubscription({
+        planId: subRow?.plan_id ?? null,
+        status: subRow?.status ?? null,
+        currentPeriodEnd: subRow?.current_period_end ?? null,
+        cancelAtPeriodEnd: Boolean(subRow?.cancel_at_period_end),
+        isPro: isSubscriptionCurrentlyPro({
+          status: subRow?.status ?? null,
+          currentPeriodEnd: subRow?.current_period_end ?? null,
+        }),
+      });
     } catch (e) {
       // Supabase unreachable/unconfigured — don't crash; leave profile empty.
       console.error("[auth] failed to load profile:", e instanceof Error ? e.message : e);
       setProfile(null);
       setRoles([]);
+      setSubscription(null);
     }
   };
 
@@ -219,6 +243,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         setProfile(null);
         setRoles([]);
+        setSubscription(null);
       }
       if (event === "INITIAL_SESSION" || event === "SIGNED_IN" || event === "SIGNED_OUT") {
         authReadyRef.current = true;
@@ -338,6 +363,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     profile,
     roles,
     isOwner: roles.includes("owner"),
+    isPro: roles.includes("owner") || Boolean(subscription?.isPro),
+    subscription,
     isAdmin: roles.includes("admin") || roles.includes("owner"),
     isModerator: roles.includes("moderator") || roles.includes("admin") || roles.includes("owner"),
     loading,

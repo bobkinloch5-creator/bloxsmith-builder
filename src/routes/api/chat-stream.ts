@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { createClient } from "@supabase/supabase-js";
+import { FREE_ACCESS_MODELS, isModelAllowedForPlan } from "@/lib/ai-models";
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_PUBLISHABLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY!;
@@ -31,11 +32,10 @@ const MODEL_CONFIG: Record<string, { cost: number; provider: Provider; upstreamI
   "gpt-5.3-codex": { cost: 2, provider: "neokens" },
   "gpt-5.4": { cost: 4, provider: "neokens" },
   "gpt-5.5": { cost: 6, provider: "neokens" },
-  // Owner-only experimental Comet route
+  // Pro premium Comet route
   "claude-fable-5": { cost: 30, provider: "comet", upstreamId: "claude-fable-5" },
 };
 const ALLOWED_MODELS = new Set(Object.keys(MODEL_CONFIG));
-const OWNER_ONLY_MODELS = new Set<string>(["claude-fable-5"]);
 
 const SYSTEM_PROMPT = `You are BloxSmith, an expert AI assistant for building Roblox games.
 You help users design games, write Luau scripts, build maps, create assets, and ship full Roblox experiences.
@@ -67,23 +67,21 @@ export const Route = createFileRoute("/api/chat-stream")({
             : "google/gemini-3-flash-preview";
           if (!userMessage) return new Response("Empty message", { status: 400 });
 
-          // Owner-only model gate
-          let isOwner = false;
-          if (OWNER_ONLY_MODELS.has(model)) {
-            const { data: roles } = await sb
-              .from("user_roles")
-              .select("role")
-              .eq("user_id", userId);
-            isOwner = (roles ?? []).some((r: any) => r.role === "owner");
-            if (!isOwner) {
-              return new Response(
-                JSON.stringify({
-                  error: "model_restricted",
-                  message: "This model is restricted to the owner account.",
-                }),
-                { status: 403, headers: { "Content-Type": "application/json" } },
-              );
-            }
+          const { data: roles } = await sb.from("user_roles").select("role").eq("user_id", userId);
+          const isOwner = (roles ?? []).some((r: any) => r.role === "owner");
+          let isPro = isOwner;
+          if (!isOwner) {
+            const { data: pro } = await (sb as any).rpc("is_pro_user", { _user_id: userId });
+            isPro = Boolean(pro);
+          }
+          if (!FREE_ACCESS_MODELS.has(model) && !isModelAllowedForPlan(model, { isOwner, isPro })) {
+            return new Response(
+              JSON.stringify({
+                error: "model_restricted",
+                message: "Upgrade to BloxSmith Pro to use this premium AI model.",
+              }),
+              { status: 403, headers: { "Content-Type": "application/json" } },
+            );
           }
 
           const modelCfg = MODEL_CONFIG[model];

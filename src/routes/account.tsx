@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useServerFn } from "@tanstack/react-start";
 import { generatePluginToken } from "@/lib/projects.functions";
 import { deleteOwnAccount } from "@/lib/account.functions";
+import { cancelMyProSubscriptionFn } from "@/lib/subscription.functions";
 import { GAME_TYPES } from "@/lib/templates";
 import {
   Copy,
@@ -50,6 +51,11 @@ import {
   selectableProfileBadgeIds,
 } from "@/lib/profile-badges";
 import { resolveNeokensModel } from "@/lib/ai-models";
+import {
+  PRO_PLAN_NAME,
+  PRO_PLAN_PRICE_USD,
+  proAccessLabel,
+} from "@/lib/subscriptions";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -140,7 +146,7 @@ function ProfileRolesRow() {
 }
 
 function Account() {
-  const { user, profile, loading, refresh, isOwner, roles } = useAuth();
+  const { user, profile, loading, refresh, isOwner, isPro, subscription, roles } = useAuth();
   const nav = useNavigate();
   const [activeTab, setActiveTab] = useState<
     "profile" | "billing" | "workspaces" | "analytics" | "security"
@@ -160,6 +166,7 @@ function Account() {
   const [model3dCount, setModel3dCount] = useState(0);
   const runToken = useServerFn(generatePluginToken);
   const runDelete = useServerFn(deleteOwnAccount);
+  const cancelSubscription = useServerFn(cancelMyProSubscriptionFn);
   const [confirmText, setConfirmText] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [promoCode, setPromoCode] = useState("");
@@ -169,6 +176,7 @@ function Account() {
   }, []);
   const [redeeming, setRedeeming] = useState(false);
   const [claiming, setClaiming] = useState(false);
+  const [cancellingPro, setCancellingPro] = useState(false);
   const dailyCd = useDailyClaimCooldown(user?.id);
   const [redemptions, setRedemptions] = useState<
     { id: string; credits: number; redeemed_at: string; promo_codes: { code: string } | null }[]
@@ -229,6 +237,20 @@ function Account() {
     dailyCd.start();
     toast.success(`+${res.amount} daily credits! Balance: ${res.credits}`);
     await refresh();
+  };
+
+  const cancelPro = async () => {
+    if (!confirm("Cancel Pro renewal? You keep access until the paid month ends.")) return;
+    setCancellingPro(true);
+    try {
+      await cancelSubscription({});
+      toast.success("Pro renewal canceled. Access stays active until the period ends.");
+      await refresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not cancel Pro.");
+    } finally {
+      setCancellingPro(false);
+    }
   };
 
   const signOut = async () => {
@@ -724,6 +746,46 @@ function Account() {
 
             <div className="grid lg:grid-cols-12 gap-6">
               <div className="lg:col-span-7 space-y-6">
+                <section className="rounded-2xl border border-primary/30 bg-primary/10 p-6 space-y-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h2 className="text-lg font-bold flex items-center gap-2">
+                        <Sparkles className="h-5 w-5 text-primary" /> {PRO_PLAN_NAME}
+                      </h2>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {isPro
+                          ? proAccessLabel(subscription)
+                          : `Unlock all higher AI models, including Claude Fable 5, for $${PRO_PLAN_PRICE_USD}/month.`}
+                      </p>
+                    </div>
+                    <span
+                      className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                        isPro ? "bg-success/15 text-success" : "bg-surface-elevated text-muted-foreground"
+                      }`}
+                    >
+                      {isPro ? "Pro active" : "Free plan"}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Link
+                      to="/checkout/pro"
+                      className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+                    >
+                      {isPro ? "Manage Pro" : "Subscribe with crypto"}
+                    </Link>
+                    {isPro && !subscription?.cancelAtPeriodEnd && subscription?.status !== "canceled" && (
+                      <button
+                        type="button"
+                        onClick={cancelPro}
+                        disabled={cancellingPro}
+                        className="rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:bg-surface-elevated disabled:opacity-60"
+                      >
+                        {cancellingPro ? "Cancelling..." : "Cancel renewal"}
+                      </button>
+                    )}
+                  </div>
+                </section>
+
                 {/* Promo Codes & Daily Credits */}
                 <section className="rounded-2xl border border-border/50 bg-surface/20 p-6 space-y-4">
                   <h2 className="text-lg font-bold flex items-center gap-2">

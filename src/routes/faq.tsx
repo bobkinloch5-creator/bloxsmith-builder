@@ -44,7 +44,7 @@ const QA = [
   },
   {
     q: "Do you have subscriptions?",
-    a: "No. BloxSmith is credit-only. You buy what you need, when you need it. No recurring charges, ever.",
+    a: "Yes. Free users can use selected fast models with starter and daily credits. BloxSmith Pro is $25 USD/month through crypto checkout and unlocks higher models, including Claude Fable 5, with access staying active until the paid month ends if you cancel.",
   },
   {
     q: "How do I pay?",

@@ -48,6 +48,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ShowcaseProjectIdRouteImport } from './routes/showcase.$projectId'
 import { Route as ProjectProjectIdRouteImport } from './routes/project.$projectId'
 import { Route as EmailUnsubscribeRouteImport } from './routes/email/unsubscribe'
+import { Route as CheckoutProRouteImport } from './routes/checkout.pro'
 import { Route as CheckoutCustomRouteImport } from './routes/checkout.custom'
 import { Route as CheckoutPackRouteImport } from './routes/checkout.$pack'
 import { Route as AuthCallbackRouteImport } from './routes/auth.callback'
@@ -272,6 +273,11 @@ const EmailUnsubscribeRoute = EmailUnsubscribeRouteImport.update({
   path: '/email/unsubscribe',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CheckoutProRoute = CheckoutProRouteImport.update({
+  id: '/checkout/pro',
+  path: '/checkout/pro',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CheckoutCustomRoute = CheckoutCustomRouteImport.update({
   id: '/checkout/custom',
   path: '/checkout/custom',
@@ -462,6 +468,7 @@ export interface FileRoutesByFullPath {
   '/auth/callback': typeof AuthCallbackRoute
   '/checkout/$pack': typeof CheckoutPackRoute
   '/checkout/custom': typeof CheckoutCustomRoute
+  '/checkout/pro': typeof CheckoutProRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/project/$projectId': typeof ProjectProjectIdRoute
   '/showcase/$projectId': typeof ShowcaseProjectIdRoute
@@ -531,6 +538,7 @@ export interface FileRoutesByTo {
   '/auth/callback': typeof AuthCallbackRoute
   '/checkout/$pack': typeof CheckoutPackRoute
   '/checkout/custom': typeof CheckoutCustomRoute
+  '/checkout/pro': typeof CheckoutProRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/project/$projectId': typeof ProjectProjectIdRoute
   '/showcase/$projectId': typeof ShowcaseProjectIdRoute
@@ -601,6 +609,7 @@ export interface FileRoutesById {
   '/auth/callback': typeof AuthCallbackRoute
   '/checkout/$pack': typeof CheckoutPackRoute
   '/checkout/custom': typeof CheckoutCustomRoute
+  '/checkout/pro': typeof CheckoutProRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/project/$projectId': typeof ProjectProjectIdRoute
   '/showcase/$projectId': typeof ShowcaseProjectIdRoute
@@ -672,6 +681,7 @@ export interface FileRouteTypes {
     | '/auth/callback'
     | '/checkout/$pack'
     | '/checkout/custom'
+    | '/checkout/pro'
     | '/email/unsubscribe'
     | '/project/$projectId'
     | '/showcase/$projectId'
@@ -741,6 +751,7 @@ export interface FileRouteTypes {
     | '/auth/callback'
     | '/checkout/$pack'
     | '/checkout/custom'
+    | '/checkout/pro'
     | '/email/unsubscribe'
     | '/project/$projectId'
     | '/showcase/$projectId'
@@ -810,6 +821,7 @@ export interface FileRouteTypes {
     | '/auth/callback'
     | '/checkout/$pack'
     | '/checkout/custom'
+    | '/checkout/pro'
     | '/email/unsubscribe'
     | '/project/$projectId'
     | '/showcase/$projectId'
@@ -880,6 +892,7 @@ export interface RootRouteChildren {
   AuthCallbackRoute: typeof AuthCallbackRoute
   CheckoutPackRoute: typeof CheckoutPackRoute
   CheckoutCustomRoute: typeof CheckoutCustomRoute
+  CheckoutProRoute: typeof CheckoutProRoute
   EmailUnsubscribeRoute: typeof EmailUnsubscribeRoute
   ProjectProjectIdRoute: typeof ProjectProjectIdRoute
   ApiAssistantExecuteRoute: typeof ApiAssistantExecuteRoute
@@ -1180,6 +1193,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof EmailUnsubscribeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/checkout/pro': {
+      id: '/checkout/pro'
+      path: '/checkout/pro'
+      fullPath: '/checkout/pro'
+      preLoaderRoute: typeof CheckoutProRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/checkout/custom': {
       id: '/checkout/custom'
       path: '/checkout/custom'
@@ -1437,6 +1457,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthCallbackRoute: AuthCallbackRoute,
   CheckoutPackRoute: CheckoutPackRoute,
   CheckoutCustomRoute: CheckoutCustomRoute,
+  CheckoutProRoute: CheckoutProRoute,
   EmailUnsubscribeRoute: EmailUnsubscribeRoute,
   ProjectProjectIdRoute: ProjectProjectIdRoute,
   ApiAssistantExecuteRoute: ApiAssistantExecuteRoute,

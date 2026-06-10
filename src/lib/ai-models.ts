@@ -38,19 +38,54 @@ export const SITE_PROVIDER_MODELS: Record<SiteProviderId, string[]> = {
   ],
 };
 
-// Models that are only visible/usable to owner accounts. Hidden in the UI
-// for non-owners and rejected server-side. Add ids here to gate new
-// experimental routes to staff/owner only.
-export const OWNER_ONLY_MODELS: ReadonlySet<string> = new Set(["claude-fable-5"]);
+// Free accounts get the reliable budget models. BloxSmith Pro and Owner
+// accounts unlock the full premium catalog, including Claude Fable 5.
+export const FREE_ACCESS_MODELS: ReadonlySet<string> = new Set([
+  "gemini-3-flash",
+  "claude-haiku-4-5-20251001",
+  "gpt-5.3-codex",
+  "deepseek-v4-flash",
+  "gpt-5.4-nano",
+  "minimax-m2-7",
+  "gemini-3.1-flash-lite-preview",
+]);
+
+export const PRO_ONLY_MODELS: ReadonlySet<string> = new Set(
+  Object.values(SITE_PROVIDER_MODELS)
+    .flat()
+    .filter((model) => !FREE_ACCESS_MODELS.has(model)),
+);
+
+// Kept for backwards compatibility with older call sites. Fable is no longer
+// Older code paths imported this symbol when Fable was owner-only. It is empty
+// now because Pro users can access Fable through the subscription gate.
+export const OWNER_ONLY_MODELS: ReadonlySet<string> = new Set([]);
 export const COMING_SOON_MODELS: ReadonlySet<string> = new Set([]);
 
 export function isOwnerOnlyModel(modelId: string | null | undefined): boolean {
   return !!modelId && OWNER_ONLY_MODELS.has(modelId);
 }
 
+export function isProOnlyModel(modelId: string | null | undefined): boolean {
+  return !!modelId && PRO_ONLY_MODELS.has(modelId);
+}
+
+export function isFreeAccessModel(modelId: string | null | undefined): boolean {
+  return !!modelId && FREE_ACCESS_MODELS.has(modelId);
+}
+
+export function isModelAllowedForPlan(
+  modelId: string | null | undefined,
+  opts: { isOwner?: boolean; isPro?: boolean },
+): boolean {
+  if (!modelId) return true;
+  if (opts.isOwner || opts.isPro) return true;
+  return FREE_ACCESS_MODELS.has(modelId);
+}
+
 export const SITE_PROVIDER_DEFAULT_MODEL: Record<SiteProviderId, string> = {
-  neokens: "claude-sonnet-4-6-thinking",
-  comet: "claude-sonnet-4-6",
+  neokens: "gemini-3-flash",
+  comet: "deepseek-v4-flash",
 };
 
 export const SITE_MODEL_DESCRIPTIONS: Record<string, string> = {
@@ -137,7 +172,7 @@ export const SITE_MODEL_DESCRIPTIONS: Record<string, string> = {
   "gemini-3-flash":
     "Fast all-rounder for everyday Roblox scripting: GUIs, RemoteEvents, and small gameplay edits. Cheap and quick. What it does for your game: edits ScreenGuis, adds buttons, wires RemoteEvents, and ships small tweaks in seconds.",
   "claude-fable-5":
-    "Owner-only premium model for BloxSmith's hardest Roblox work: advanced reasoning, long project planning, full game architecture, complex scripting help, debugging, and high-quality agentic builds. It is restricted to accounts with the Owner role.",
+    "BloxSmith Pro premium model for the hardest Roblox work: advanced reasoning, long project planning, full game architecture, complex scripting help, debugging, and high-quality agentic builds. It is unlocked for active Pro and Owner accounts.",
 };
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -203,7 +238,7 @@ export const MODEL_CREDIT_MULTIPLIERS: Record<string, number> = {
   // Gemini
   "gemini-3.1-pro": 2,
   "gemini-3-flash": 1,
-  // Owner-only experimental
+  // Pro premium experimental
   "claude-fable-5": 30,
 };
 
@@ -450,7 +485,7 @@ export const MODEL_TOOL_CAPABILITIES: Record<
     tools: true,
     webSearch: true,
     thinking: true,
-    label: "Owner-only premium reasoning",
+    label: "Pro premium reasoning",
   },
 };
 
@@ -592,7 +627,7 @@ export const COMET_MODEL_MAP: Record<string, { comet: string; thinking?: boolean
   "claude-opus-4-8": { comet: "claude-opus-4-8" },
   "claude-sonnet-4-6-thinking": { comet: "claude-sonnet-4-6", thinking: true },
   "claude-opus-4-8-thinking": { comet: "claude-opus-4-8", thinking: true },
-  // Owner-only experimental route
+  // Pro premium experimental route
   "claude-fable-5": { comet: "claude-fable-5" },
 };
 

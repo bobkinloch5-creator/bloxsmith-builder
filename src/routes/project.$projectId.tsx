@@ -6,7 +6,7 @@ import { ModelPicker } from "@/components/ModelPicker";
 import { useAiBusySounds } from "@/hooks/useSounds";
 import {
   getModelCreditMultiplier,
-  isOwnerOnlyModel,
+  isProOnlyModel,
   SITE_PROVIDER_LABELS,
   type SiteProviderId,
 } from "@/lib/ai-models";
@@ -183,7 +183,7 @@ type Msg = { id: string; role: "user" | "assistant"; content: string; actions?: 
 
 function ProjectEditor() {
   const { projectId } = Route.useParams();
-  const { user, session, loading, isOwner, profile } = useAuth();
+  const { user, session, loading, isOwner, isPro, profile } = useAuth();
   const { theme } = useTheme();
   const chatWallpaper = profile?.custom_background_url ?? THEME_WALLPAPERS[theme] ?? null;
 
@@ -673,7 +673,7 @@ function ProjectEditor() {
       ? planEstimatedCost
       : buildEstimatedCost;
   const currentListCost = chatMode ? chatListCost : planMode ? planListCost : buildListCost;
-  const selectedModelIsOwnerOnly = isOwnerOnlyModel(aiSettings.model);
+  const selectedModelIsProOnly = isProOnlyModel(aiSettings.model);
   const [aiUsage, setAiUsage] = useState<{
     used_5h: number;
     limit_5h: number;
@@ -3937,6 +3937,7 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                     }
                     model={aiSettings.model}
                     onChange={(p, m) => setAiSettings({ mode: "api_key", provider: p, model: m })}
+                    disabled={aiUsageBlocked}
                   />
 
                   {aiUsage &&
@@ -3980,8 +3981,10 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                 </div>
 
                 <span className="shrink-0 rounded-full border border-border/40 bg-surface-elevated/70 px-2.5 py-1 text-[10px] text-muted-foreground">
-                  {selectedModelIsOwnerOnly && isOwner
-                    ? `Owner Fable · list ${currentListCost} cr · charged 0`
+                  {selectedModelIsProOnly && isOwner
+                    ? `Owner premium · list ${currentListCost} cr · charged 0`
+                    : selectedModelIsProOnly && isPro
+                      ? `Pro premium · est. ${currentEstimatedCost} cr`
                     : chatMode
                       ? `est. ${chatEstimatedCost} cr / chat`
                       : planMode

@@ -48,6 +48,47 @@ const tagStyles = {
 
 export const changelogItems = [
   {
+    version: "v3.10.9",
+    date: "June 10, 2026",
+    title: "Crypto Pro Subscriptions",
+    description:
+      "BloxSmith Pro is now a $25/month crypto subscription that unlocks the premium AI model catalog, including Claude Fable 5.",
+    updates: [
+      {
+        category: "Billing",
+        tagColor: tagStyles.backend,
+        icon: CreditCard,
+        title: "BloxSmith Pro Plan",
+        detail:
+          "The pricing page now lists Free and Pro benefits, with Pro at $25 USD/month, Litecoin checkout, all higher-model access, Claude Fable 5, and monthly bonus credits after approval.",
+      },
+      {
+        category: "Security",
+        tagColor: tagStyles.security,
+        icon: ShieldCheck,
+        title: "Subscription Access Window",
+        detail:
+          "Pro access is stored as a subscription entitlement. Canceling marks renewal off while keeping premium model access until the paid month ends.",
+      },
+      {
+        category: "Admin",
+        tagColor: tagStyles.tools,
+        icon: Wrench,
+        title: "Owner Pro Verification Queue",
+        detail:
+          "Owners can approve or reject pending Pro Litecoin payments from Admin. Approval adds one Pro month and grants the monthly Pro bonus credits.",
+      },
+      {
+        category: "AI",
+        tagColor: tagStyles.ai,
+        icon: Bot,
+        title: "Free vs Pro Model Gating",
+        detail:
+          "Free users keep a curated fast model set, while active Pro and Owner accounts unlock the premium catalog including Fable, Opus, GPT, Gemini, Grok, Qwen, DeepSeek, MiniMax, and Comet routes.",
+      },
+    ],
+  },
+  {
     version: "v3.10.8",
     date: "June 10, 2026",
     title: "Litecoin Crypto Payments",
@@ -125,17 +166,17 @@ export const changelogItems = [
   {
     version: "v3.10.5",
     date: "June 10, 2026",
-    title: "Owner Fable, Better Toolbox, and Social Profiles",
+    title: "Premium Fable, Better Toolbox, and Social Profiles",
     description:
-      "BloxSmith now treats Claude Fable 5 as an owner-level model, makes asset picking more deliberate, and repairs public profile views.",
+      "BloxSmith added premium Fable safeguards, makes asset picking more deliberate, and repairs public profile views.",
     updates: [
       {
         category: "AI",
         tagColor: tagStyles.ai,
         icon: Bot,
-        title: "Claude Fable 5 Owner Gate",
+        title: "Claude Fable 5 Premium Gate",
         detail:
-          "Claude Fable 5 is restricted to Owner role accounts across the model picker, saved project AI settings, runtime AI gateway resolution, and the legacy chat stream route.",
+          "Claude Fable 5 is gated through premium account access across the model picker, saved project AI settings, runtime AI gateway resolution, and the legacy chat stream route.",
       },
       {
         category: "Backend",

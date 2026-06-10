@@ -117,6 +117,7 @@ export const loadAdminDashboardFn = createServerFn({ method: "GET" })
       projectsResult,
       generationsResult,
       paymentsResult,
+      subscriptionRequestsResult,
       promosResult,
       submissionsResult,
       creditsResult,
@@ -136,6 +137,11 @@ export const loadAdminDashboardFn = createServerFn({ method: "GET" })
       supabaseAdmin.from("generations").select("user_id").limit(10_000),
       (supabaseAdmin as any)
         .from("payment_requests")
+        .select("*")
+        .eq("status", "pending")
+        .order("created_at", { ascending: false }),
+      (supabaseAdmin as any)
+        .from("subscription_requests")
         .select("*")
         .eq("status", "pending")
         .order("created_at", { ascending: false }),
@@ -167,6 +173,8 @@ export const loadAdminDashboardFn = createServerFn({ method: "GET" })
       projectsResult.error,
       generationsResult.error,
       paymentsResult.error,
+      subscriptionRequestsResult.error &&
+        !/does not exist|schema cache/i.test(subscriptionRequestsResult.error.message),
       promosResult.error,
       submissionsResult.error,
       creditsResult.error,
@@ -222,10 +230,16 @@ export const loadAdminDashboardFn = createServerFn({ method: "GET" })
         generations: generationCount.count ?? generationsResult.data?.length ?? 0,
         banned: users.filter((user) => user.banned).length,
         pendingPayments: paymentsResult.data?.length ?? 0,
+        pendingSubscriptions: subscriptionRequestsResult.error
+          ? 0
+          : (subscriptionRequestsResult.data?.length ?? 0),
         pendingPromotions: submissionsResult.data?.length ?? 0,
       },
       users,
       paymentRequests: paymentsResult.data ?? [],
+      subscriptionRequests: subscriptionRequestsResult.error
+        ? []
+        : (subscriptionRequestsResult.data ?? []),
       promos: promosResult.data ?? [],
       promotionSubmissions: submissionsResult.data ?? [],
       creditActivity: creditsResult.data ?? [],
@@ -544,6 +558,36 @@ export const adminReviewPaymentFn = createServerFn({ method: "POST" })
     await writeAudit({
       actorId: context.userId,
       action: data.approve ? "approve_payment" : "reject_payment",
+      metadata: { request_id: data.requestId, reason: data.reason },
+    });
+    return { approved: data.approve };
+  });
+
+export const adminReviewSubscriptionFn = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z
+      .object({
+        requestId: z.string().uuid(),
+        approve: z.boolean(),
+        reason: z.string().trim().max(240).default(""),
+      })
+      .parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    const { supabaseAdmin } = await requireOwner(context.userId);
+    const rpc = data.approve
+      ? await (supabaseAdmin as any).rpc("admin_approve_subscription", {
+          _request_id: data.requestId,
+        })
+      : await (supabaseAdmin as any).rpc("admin_reject_subscription", {
+          _request_id: data.requestId,
+          _reason: data.reason || "Payment could not be verified",
+        });
+    if (rpc.error) throw new Error(rpc.error.message);
+    await writeAudit({
+      actorId: context.userId,
+      action: data.approve ? "approve_pro_subscription" : "reject_pro_subscription",
       metadata: { request_id: data.requestId, reason: data.reason },
     });
     return { approved: data.approve };

@@ -14,6 +14,7 @@ type CryptoPaymentPanelProps = {
   credits: number;
   packId: string;
   userEmail?: string | null;
+  description?: string;
 };
 
 export function CryptoPaymentPanel({
@@ -21,6 +22,7 @@ export function CryptoPaymentPanel({
   credits,
   packId,
   userEmail,
+  description,
 }: CryptoPaymentPanelProps) {
   const [ltcUsdRate, setLtcUsdRate] = useState(LITECOIN_FALLBACK_USD_RATE);
   const [rateSource, setRateSource] = useState<"live" | "fallback">("fallback");
@@ -67,8 +69,8 @@ export function CryptoPaymentPanel({
         <div className="min-w-0">
           <h3 className="font-semibold">Crypto payment accepted</h3>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            Send Litecoin only. Credits are added after the payment is verified, the same as manual
-            PayPal verification.
+            {description ??
+              "Send Litecoin only. Credits are added after the payment is verified, the same as manual PayPal verification."}
           </p>
         </div>
       </div>

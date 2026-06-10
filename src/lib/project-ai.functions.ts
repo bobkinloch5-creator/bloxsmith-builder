@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { z } from "zod";
-import { isOwnerOnlyModel } from "@/lib/ai-models";
+import { isModelAllowedForPlan } from "@/lib/ai-models";
 
 const ProviderEnum = z.enum(["openai", "anthropic", "google", "groq", "neokens", "comet"]);
 
@@ -56,17 +56,25 @@ async function assertProjectAccess(
   }
 }
 
-async function assertOwnerOnlyModelAccess(supabase: any, userId: string, model: string | null | undefined) {
-  if (!isOwnerOnlyModel(model)) return;
-  const { data } = await supabase
+async function getAiPlanAccess(supabase: any, userId: string) {
+  const { data: roles } = await supabase
     .from("user_roles")
     .select("role")
-    .eq("user_id", userId)
-    .eq("role", "owner")
-    .maybeSingle();
-  if (!data) {
-    throw new Error("Claude Fable 5 is restricted to Owner role accounts.");
+    .eq("user_id", userId);
+  const isOwner = (roles ?? []).some((row: any) => row.role === "owner");
+  if (isOwner) return { isOwner: true, isPro: true };
+  try {
+    const { data: isPro } = await (supabase as any).rpc("is_pro_user", { _user_id: userId });
+    return { isOwner: false, isPro: Boolean(isPro) };
+  } catch {
+    return { isOwner: false, isPro: false };
   }
+}
+
+async function assertModelAccess(supabase: any, userId: string, model: string | null | undefined) {
+  const access = await getAiPlanAccess(supabase, userId);
+  if (isModelAllowedForPlan(model, access)) return;
+  throw new Error("Upgrade to BloxSmith Pro to use this premium AI model.");
 }
 
 export const getProjectAiConfig = createServerFn({ method: "POST" })
@@ -92,9 +100,10 @@ export const getProjectAiConfig = createServerFn({ method: "POST" })
       model: null,
       updated_at: null,
     };
-    if (isOwnerOnlyModel(settings.model)) {
+    const access = await getAiPlanAccess(supabase, userId);
+    if (!isModelAllowedForPlan(settings.model, access)) {
       try {
-        await assertOwnerOnlyModelAccess(supabase, userId, settings.model);
+        await assertModelAccess(supabase, userId, settings.model);
       } catch {
         settings.model = null;
       }
@@ -117,7 +126,7 @@ export const saveProjectAiSettings = createServerFn({ method: "POST" })
     const { supabase, userId } = context;
     await assertProjectAccess(supabase, data.projectId, userId, { requireEdit: true });
     if (data.mode === "api_key") {
-      await assertOwnerOnlyModelAccess(supabase, userId, data.model);
+      await assertModelAccess(supabase, userId, data.model);
     }
     const payload = {
       project_id: data.projectId,

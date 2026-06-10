@@ -256,7 +256,7 @@ const comingSoon = [
   {
     icon: Brain,
     title: "Claude Fable 5",
-    desc: "Claude Fable 5 is now an Owner-only premium model for advanced reasoning, long project planning, game creation, scripting help, debugging, and high-quality agentic work.",
+    desc: "Claude Fable 5 is now a Pro premium model for advanced reasoning, long project planning, game creation, scripting help, debugging, and high-quality agentic work.",
   },
   {
     icon: Brain,
@@ -548,7 +548,7 @@ function Landing() {
         <div className="mx-auto max-w-7xl px-4 sm:px-6 py-2.5 text-center text-xs sm:text-sm">
           <Sparkles className="inline-block h-4 w-4 mr-1.5 text-primary align-text-bottom" />
           <span className="font-semibold gradient-text-premium">claude-fable-5</span>
-          <span className="text-muted-foreground"> — Owner-only premium reasoning for the hardest BloxSmith builds.</span>
+          <span className="text-muted-foreground"> — Pro premium reasoning for the hardest BloxSmith builds.</span>
         </div>
       </div>
 

@@ -4,6 +4,12 @@ import { Header, Footer } from "@/components/layout";
 import { CREDIT_PACKS } from "@/lib/credits";
 import { CreditCostBreakdown } from "@/components/CreditCostBreakdown";
 import {
+  PRO_BENEFITS,
+  PRO_MONTHLY_BONUS_CREDITS,
+  PRO_PLAN_NAME,
+  PRO_PLAN_PRICE_USD,
+} from "@/lib/subscriptions";
+import {
   formatLtcAmount,
   LITECOIN_FALLBACK_USD_RATE,
   LITECOIN_PAYMENT_ADDRESS,
@@ -47,7 +53,7 @@ function Pricing() {
         <div className="text-center max-w-2xl mx-auto">
           <h1 className="text-4xl sm:text-5xl font-bold tracking-tight">Simple, fair pricing</h1>
           <p className="mt-3 text-muted-foreground">
-            Free to start. Buy credits only when you need more.
+            Free to start. Upgrade to Pro for premium models, or buy credits only when you need more.
           </p>
 
           {/* Billing toggle */}
@@ -80,6 +86,61 @@ function Pricing() {
             </p>
           )}
         </div>
+
+        <section className="mt-10 grid gap-4 lg:grid-cols-[0.85fr_1.15fr]">
+          <div className="glass rounded-2xl p-6">
+            <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Free
+            </div>
+            <div className="mt-2 text-3xl font-bold">$0</div>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Start building with selected fast models, starter credits, daily refills, script
+              generation, and core AI chat.
+            </p>
+            <ul className="mt-4 space-y-2 text-sm text-muted-foreground">
+              <li>100 starter credits and 10 daily credits</li>
+              <li>Free model access: Gemini Flash, Claude Haiku, GPT Codex, DeepSeek Flash, and budget Comet routes</li>
+              <li>Pay-as-you-go credit packs when you need bigger runs</li>
+            </ul>
+          </div>
+
+          <div className="relative overflow-hidden rounded-2xl border border-primary/40 bg-primary/10 p-6 shadow-lg shadow-primary/10">
+            <div className="absolute right-4 top-4 rounded-full bg-primary px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-primary-foreground">
+              Crypto Pro
+            </div>
+            <div className="text-xs font-semibold uppercase tracking-wider text-primary">
+              {PRO_PLAN_NAME}
+            </div>
+            <div className="mt-2 flex flex-wrap items-end gap-2">
+              <span className="text-4xl font-black">${PRO_PLAN_PRICE_USD}</span>
+              <span className="pb-1 text-sm text-muted-foreground">USD / month</span>
+            </div>
+            <p className="mt-3 max-w-2xl text-sm text-muted-foreground">
+              Unlock all higher models for the month, including Claude Fable 5. If you cancel, Pro
+              access stays active until the paid month ends.
+            </p>
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              {PRO_BENEFITS.map((benefit) => (
+                <div
+                  key={benefit}
+                  className="rounded-xl border border-primary/20 bg-background/35 px-3 py-2 text-sm"
+                >
+                  {benefit}
+                </div>
+              ))}
+            </div>
+            <div className="mt-4 rounded-xl border border-primary/25 bg-background/40 px-3 py-2 text-xs text-muted-foreground">
+              Includes {PRO_MONTHLY_BONUS_CREDITS.toLocaleString()} bonus credits when the Litecoin
+              payment is approved. Premium models still show estimated credit cost before each run.
+            </div>
+            <Link
+              to="/checkout/pro"
+              className="mt-5 inline-flex w-full items-center justify-center rounded-xl bg-primary px-4 py-3 text-sm font-bold text-primary-foreground hover:bg-primary/90 sm:w-auto"
+            >
+              Subscribe with Litecoin
+            </Link>
+          </div>
+        </section>
 
         <h2 className="sr-only">Credit packs</h2>
         <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">

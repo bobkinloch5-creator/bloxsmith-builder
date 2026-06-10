@@ -9,7 +9,8 @@ import {
   SITE_MODEL_DESCRIPTIONS,
   SITE_PROVIDER_LABELS,
   SITE_PROVIDER_MODELS,
-  OWNER_ONLY_MODELS,
+  isModelAllowedForPlan,
+  isProOnlyModel,
   getModelCreditMultiplier,
   getModelTokenPricing,
   getModelToolCapabilities,
@@ -21,9 +22,9 @@ import { useAuth } from "@/lib/auth-context";
 type ProviderId = SiteProviderId;
 type ModelSelection = { provider: ProviderId; model: string };
 
-function visibleModelsForProvider(provider: ProviderId, isOwner: boolean) {
+function visibleModelsForProvider(provider: ProviderId, hasProAccess: boolean) {
   return SITE_PROVIDER_MODELS[provider].filter((candidate) =>
-    isOwner || !OWNER_ONLY_MODELS.has(candidate),
+    isModelAllowedForPlan(candidate, { isPro: hasProAccess, isOwner: hasProAccess }),
   );
 }
 
@@ -66,15 +67,18 @@ export function ModelPicker({
   provider,
   model,
   onChange,
+  disabled,
 }: {
   projectId: string;
   provider: ProviderId | null;
   model: string | null;
   onChange: (provider: ProviderId, model: string) => void;
+  disabled?: boolean;
 }) {
   const save = useServerFn(saveProjectAiSettings);
   const loadHealth = useServerFn(getSiteModelHealth);
-  const { isOwner } = useAuth();
+  const { isOwner, isPro } = useAuth();
+  const hasProAccess = isOwner || isPro;
   const [open, setOpen] = useState(false);
   const [, setSaving] = useState(false);
   const [query, setQuery] = useState("");
@@ -96,7 +100,7 @@ export function ModelPicker({
 
   useEffect(() => {
     if (provider || model) {
-      const next = normalizeSelection(provider, model, isOwner);
+      const next = normalizeSelection(provider, model, hasProAccess);
       setSelected(next);
       if ((provider || model) && (next.provider !== provider || next.model !== model)) {
         onChangeRef.current(next.provider, next.model);
@@ -107,7 +111,7 @@ export function ModelPicker({
     if (stored) {
       try {
         const parsed = JSON.parse(stored) as Partial<ModelSelection>;
-        const next = normalizeSelection(parsed.provider ?? null, parsed.model ?? null, isOwner);
+        const next = normalizeSelection(parsed.provider ?? null, parsed.model ?? null, hasProAccess);
         setSelected(next);
         onChangeRef.current(next.provider, next.model);
         return;
@@ -115,8 +119,8 @@ export function ModelPicker({
         localStorage.removeItem(`bloxsmith:model-picker:${projectId}`);
       }
     }
-    setSelected(normalizeSelection(provider, model, isOwner));
-  }, [isOwner, projectId, provider, model]);
+    setSelected(normalizeSelection(provider, model, hasProAccess));
+  }, [hasProAccess, projectId, provider, model]);
 
   const currentProvider = selected.provider;
   const currentModel = selected.model;
@@ -124,7 +128,7 @@ export function ModelPicker({
   const currentHealth = getHealth(currentProvider, currentModel);
   const normalizedQuery = query.trim().toLowerCase();
   const modelMatches = (p: ProviderId, m: string) => {
-    if (OWNER_ONLY_MODELS.has(m) && !isOwner) return false;
+    if (!isModelAllowedForPlan(m, { isOwner, isPro })) return false;
     if (!normalizedQuery) return true;
     const desc = SITE_MODEL_DESCRIPTIONS[m] ?? "";
     const providerLabel = SITE_PROVIDER_LABELS[p];
@@ -155,8 +159,8 @@ export function ModelPicker({
 
   const pick = async (p: ProviderId, m: string) => {
     const modelHealth = getHealth(p, m);
-    if (OWNER_ONLY_MODELS.has(m) && !isOwner) {
-      toast.error("Claude Fable 5 is restricted to Owner role accounts.");
+    if (!isModelAllowedForPlan(m, { isOwner, isPro })) {
+      toast.error("Upgrade to BloxSmith Pro to unlock this premium model.");
       return;
     }
     // Only block a pick when we have a loaded health record that explicitly
@@ -205,8 +209,9 @@ export function ModelPicker({
     <div ref={ref} className="relative">
       <button
         type="button"
+        disabled={disabled}
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-surface-elevated/70 border border-border/40 px-2.5 py-1 text-[10px] shadow-sm hover:border-primary/60 hover:bg-surface-elevated transition"
+        className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-surface-elevated/70 border border-border/40 px-2.5 py-1 text-[10px] shadow-sm hover:border-primary/60 hover:bg-surface-elevated transition disabled:cursor-not-allowed disabled:opacity-60"
         title={`Choose AI provider and model — ${currentStatusLabel}; current model costs ${currentMult}× credits per generation${currentPricing ? `; ${tokenPriceTitle(currentPricing)}` : ""}`}
       >
         <Cpu className="h-3 w-3 text-primary" />
@@ -217,9 +222,9 @@ export function ModelPicker({
         <span className="truncate text-muted-foreground">
           {SITE_PROVIDER_LABELS[currentProvider]} · {shortModel}
         </span>
-        {OWNER_ONLY_MODELS.has(currentModel) && (
+        {isProOnlyModel(currentModel) && (
           <span className="rounded-full border border-amber-400/30 bg-amber-400/15 px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-amber-500 dark:text-amber-300">
-            Owner
+            Pro
           </span>
         )}
         {currentCaps.webSearch && (
@@ -303,7 +308,7 @@ export function ModelPicker({
                   const modelHealth = getHealth(p, m);
                   // Only block genuinely-down models, and only once health has
                   // actually loaded. While loading or on error, keep selectable.
-                  const ownerOnly = OWNER_ONLY_MODELS.has(m);
+                  const proOnly = isProOnlyModel(m);
                   const disabled = Boolean(health.isSuccess && modelHealth?.disabled);
                   const tone =
                     mult >= 4
@@ -320,8 +325,8 @@ export function ModelPicker({
                       title={
                         modelHealth?.disabled
                           ? `${modelHealth.label}. ${modelHealth.detail ?? "This model is temporarily disabled."}`
-                          : ownerOnly
-                            ? "Owner-only model. Higher premium credit multiplier."
+                          : proOnly
+                            ? "Pro model. Higher premium credit multiplier."
                             : undefined
                       }
                       className={`mb-1 w-full rounded-xl border px-3 py-2.5 text-left transition disabled:cursor-not-allowed disabled:opacity-60 ${
@@ -331,7 +336,7 @@ export function ModelPicker({
                             : "border-primary/45 bg-primary/10 text-foreground shadow-sm"
                           : modelHealth?.disabled
                             ? "border-destructive/20 bg-destructive/5"
-                            : ownerOnly
+                            : proOnly
                               ? "border-amber-400/30 bg-amber-400/5 hover:bg-amber-400/10"
                               : "border-border/55 bg-surface/35 hover:border-primary/30 hover:bg-surface/70"
                       }`}
@@ -348,9 +353,9 @@ export function ModelPicker({
                             >
                               {m}
                             </span>
-                            {ownerOnly && (
+                            {proOnly && (
                               <span className="shrink-0 rounded-full border border-amber-400/40 bg-amber-400/15 px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-amber-500 dark:text-amber-300">
-                                Owner
+                                Pro
                               </span>
                             )}
                           </div>
@@ -412,10 +417,10 @@ export function ModelPicker({
                           {desc}
                         </div>
                       )}
-                      {ownerOnly && (
+                      {proOnly && (
                         <div className="mt-2 rounded-lg border border-amber-400/25 bg-amber-400/10 px-2 py-1 text-[10px] leading-snug text-amber-700 dark:text-amber-100">
-                          Owner-only access. Fable uses the highest premium multiplier, so higher
-                          reasoning levels show a much larger estimated list cost.
+                          Pro access. Premium models use higher multipliers, so deeper reasoning
+                          shows a larger estimated credit cost before you run it.
                         </div>
                       )}
                       {modelHealth?.disabled && (
