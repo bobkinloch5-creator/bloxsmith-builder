@@ -9,12 +9,14 @@ import {
   SITE_MODEL_DESCRIPTIONS,
   SITE_PROVIDER_LABELS,
   SITE_PROVIDER_MODELS,
+  OWNER_ONLY_MODELS,
   getModelCreditMultiplier,
   getModelTokenPricing,
   getModelToolCapabilities,
   type ModelTokenPricing,
   type SiteProviderId,
 } from "@/lib/ai-models";
+import { useAuth } from "@/lib/auth-context";
 
 type ProviderId = SiteProviderId;
 type ModelSelection = { provider: ProviderId; model: string };
