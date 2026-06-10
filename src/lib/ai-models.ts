@@ -135,6 +135,8 @@ export const SITE_MODEL_DESCRIPTIONS: Record<string, string> = {
     "Google's top reasoning model — large context, great for whole-project understanding and big builds. What it does for your game: reasons over your entire place, plans large systems, and handles long multi-file generations.",
   "gemini-3-flash":
     "Fast all-rounder for everyday Roblox scripting: GUIs, RemoteEvents, and small gameplay edits. Cheap and quick. What it does for your game: edits ScreenGuis, adds buttons, wires RemoteEvents, and ships small tweaks in seconds.",
+  "claude-fable-5":
+    "Experimental Comet route reserved for the owner account only. Hidden from normal users while it's being evaluated.",
 };
 
 // ─────────────────────────────────────────────────────────────────────────
