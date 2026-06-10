@@ -34,8 +34,18 @@ export const SITE_PROVIDER_MODELS: Record<SiteProviderId, string[]> = {
     "claude-sonnet-4-6",
     "claude-opus-4-7",
     "claude-opus-4-8",
+    "claude-fable-5",
   ],
 };
+
+// Models that are only visible/usable to owner accounts. Hidden in the UI
+// for non-owners and rejected server-side. Add ids here to gate new
+// experimental routes to staff/owner only.
+export const OWNER_ONLY_MODELS: ReadonlySet<string> = new Set(["claude-fable-5"]);
+
+export function isOwnerOnlyModel(modelId: string | null | undefined): boolean {
+  return !!modelId && OWNER_ONLY_MODELS.has(modelId);
+}
 
 export const SITE_PROVIDER_DEFAULT_MODEL: Record<SiteProviderId, string> = {
   neokens: "claude-sonnet-4-6-thinking",
