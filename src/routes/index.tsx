@@ -462,6 +462,16 @@ function Landing() {
     <div className="min-h-screen flex flex-col overflow-x-hidden [&>*]:min-w-0 [&>*]:w-full">
       <Header />
 
+      <div className="relative z-10 bg-gradient-to-r from-primary/20 via-primary/10 to-primary/20 border-b border-primary/30">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-2.5 text-center text-xs sm:text-sm">
+          <Sparkles className="inline-block h-4 w-4 mr-1.5 text-primary align-text-bottom" />
+          <span className="font-semibold gradient-text-premium">claude-fable-5</span>
+          <span className="text-muted-foreground"> — coming soon for everyone to make amazing games.</span>
+        </div>
+      </div>
+
+
+
       <section className="relative overflow-hidden">
         <img
           src={heroBg}
