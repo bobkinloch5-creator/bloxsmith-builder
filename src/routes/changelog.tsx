@@ -48,6 +48,31 @@ const tagStyles = {
 
 export const changelogItems = [
   {
+    version: "v3.10.4",
+    date: "June 10, 2026",
+    title: "Project Chat Composer Polish",
+    description:
+      "The project AI chat composer now has a cleaner, more premium layout with less visual clutter over themed backgrounds.",
+    updates: [
+      {
+        category: "UI",
+        tagColor: tagStyles.ui,
+        icon: MessageSquare,
+        title: "Cleaner Chat Input",
+        detail:
+          "Prompt chips, reasoning controls, attachment tools, and send actions now sit inside a tighter centered composer card instead of stretching across the full screen.",
+      },
+      {
+        category: "UI",
+        tagColor: tagStyles.ui,
+        icon: LayoutDashboard,
+        title: "Better Spacing and Status Pills",
+        detail:
+          "The reasoning slider, Auto-Arrange action, textbox, model picker, MCP status, Studio status, and credit estimate now wrap more cleanly on desktop and mobile.",
+      },
+    ],
+  },
+  {
     version: "v3.10.3",
     date: "June 10, 2026",
     title: "Generator Availability Cleanup",

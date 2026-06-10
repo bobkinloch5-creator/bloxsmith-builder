@@ -3253,9 +3253,9 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
               </Link>
             </div>
           ) : (
-            <div className="shrink-0 border-t border-border p-2 sm:p-3 space-y-2">
+            <div className="shrink-0 border-t border-border/70 bg-background/90 p-3 shadow-[0_-18px_40px_-30px_rgba(0,0,0,0.9)] backdrop-blur-xl sm:px-4">
               <div
-                className={`rounded-2xl border bg-surface-elevated/40 px-2 sm:px-3 py-2 sm:py-2.5 shadow-sm transition focus-within:shadow-md ${chatMode ? "border-accent/40 focus-within:border-accent/60" : planMode ? "border-primary/40 focus-within:border-primary/60" : "border-border/70 focus-within:border-primary/50"}`}
+                className={`mx-auto w-full max-w-5xl rounded-2xl border bg-background/90 px-3 py-3 shadow-2xl shadow-black/25 ring-1 ring-white/[0.03] transition focus-within:shadow-black/35 sm:px-4 ${chatMode ? "border-accent/40 focus-within:border-accent/60" : planMode ? "border-primary/40 focus-within:border-primary/60" : "border-border/70 focus-within:border-primary/50"}`}
               >
                 {attachments.length > 0 && (
                   <div className="mb-2 flex flex-wrap gap-2">
@@ -3278,7 +3278,7 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                   </div>
                 )}
                 {!prompt.trim() && attachments.length === 0 && !chatMode && !planMode && (
-                  <div className="mb-2 flex flex-wrap gap-1.5">
+                  <div className="mb-2 flex gap-1.5 overflow-x-auto pb-1 no-scrollbar sm:flex-wrap sm:overflow-visible">
                     {[
                       "Make a sword tool",
                       "Create a main menu",
@@ -3331,7 +3331,7 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                             setPrompt(tpl);
                           }
                         }}
-                        className="rounded-full border border-border bg-surface/60 px-2.5 py-1 text-[11px] text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-primary/5 transition disabled:cursor-not-allowed disabled:opacity-50"
+                        className="shrink-0 rounded-full border border-border/70 bg-surface/80 px-2.5 py-1 text-[11px] text-muted-foreground shadow-sm hover:text-foreground hover:border-primary/40 hover:bg-primary/5 transition disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {tpl}
                       </button>
@@ -3350,8 +3350,8 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                     building and edits are disabled. Ask the project owner to make you an editor.
                   </div>
                 )}
-                <div className="mb-2 rounded-xl border border-border/50 bg-surface/35 px-3 py-2">
-                  <div className="flex items-center justify-between gap-3">
+                <div className="mb-2 rounded-xl border border-border/60 bg-surface/70 px-3 py-2.5 shadow-inner shadow-black/10">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <Brain className="h-3.5 w-3.5 text-primary" />
@@ -3363,7 +3363,7 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                         {currentReasoning.description}
                       </p>
                     </div>
-                    <div className="shrink-0 rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 text-[11px] font-bold text-primary-glow">
+                    <div className="w-fit shrink-0 rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 text-[11px] font-bold text-primary-glow">
                       Est. {currentEstimatedCost} cr
                     </div>
                   </div>
@@ -3374,7 +3374,7 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                     step={1}
                     value={REASONING_LEVELS.findIndex((level) => level.id === reasoningLevel)}
                     onChange={(e) => setReasoning(REASONING_LEVELS[Number(e.target.value)].id)}
-                    className="mt-2 h-2 w-full accent-primary"
+                    className="mt-2 h-1.5 w-full accent-primary"
                     aria-label="AI reasoning level"
                   />
                   <div className="mt-1 grid grid-cols-4 gap-1 text-[9px] text-muted-foreground">
@@ -3396,13 +3396,13 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                   </div>
                 </div>
                 {!chatMode && canEdit && (
-                  <div className="mb-2 rounded-lg border border-border/50 bg-surface/35 px-2 py-1.5 sm:px-2.5 sm:py-2">
+                  <div className="mb-2 flex justify-end">
                     <button
                       type="button"
                       onClick={autoArrange}
                       disabled={aiBusy || aiUsageBlocked}
                       title="Auto-arrange: ground, scale, space, and tidy every map object so nothing floats or overlaps (undoable)"
-                      className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg border border-primary/40 bg-surface/50 px-3 text-xs font-bold text-foreground transition hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50"
+                      className="inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-primary/35 bg-primary/10 px-3 text-xs font-semibold text-primary-glow transition hover:bg-primary/15 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       🧭 Auto-Arrange Placement
                     </button>
@@ -3660,7 +3660,7 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                           : "Type any command: build a map, add UI, fix bugs..."
                   }
                   disabled={aiUsageBlocked}
-                  className="min-h-14 sm:min-h-20 w-full resize-none bg-transparent px-1 py-1 text-[13px] sm:text-sm leading-relaxed placeholder:text-muted-foreground focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                  className="min-h-20 w-full resize-none rounded-xl border border-border/60 bg-background/75 px-3 py-2 text-[13px] leading-relaxed placeholder:text-muted-foreground/80 shadow-inner shadow-black/10 focus:border-primary/40 focus:outline-none focus:ring-2 focus:ring-primary/10 disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm"
                 />
                 <input
                   ref={fileInputRef}
@@ -3675,8 +3675,8 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                     }
                   }}
                 />
-                <div className="mt-2 flex flex-nowrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-1 overflow-x-auto no-scrollbar -mx-1 px-1 min-w-0">
+                <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                     <button
                       type="button"
                       onClick={() =>
@@ -3791,7 +3791,7 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                     </button>
                   </div>
                   {aiBusy ? (
-                    <div className="flex shrink-0 items-center gap-1.5">
+                    <div className="flex shrink-0 items-center gap-1.5 sm:justify-end">
                       <button
                         onClick={stopGeneration}
                         className="inline-flex h-8 items-center gap-2 rounded-lg bg-rose-500/90 px-3 text-xs font-semibold text-white hover:bg-rose-500 transition"
@@ -3814,7 +3814,7 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                     <button
                       onClick={send}
                       disabled={aiUsageBlocked || (!prompt.trim() && attachments.length === 0)}
-                      className="inline-flex h-8 items-center gap-2 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground hover:opacity-90 transition disabled:opacity-30"
+                      className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 text-xs font-semibold text-primary-foreground hover:opacity-90 transition disabled:opacity-30 sm:w-auto"
                       title={
                         chatMode
                           ? `Send chat · est. ${chatEstimatedCost} cr`
@@ -3835,12 +3835,12 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                   )}
                 </div>
               </div>
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5 flex-wrap">
+              <div className="mx-auto flex w-full max-w-5xl flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                   <button
                     type="button"
                     onClick={() => setShowAiSourceModal(true)}
-                    className="inline-flex items-center gap-1.5 rounded-full bg-surface-elevated/60 border border-border/40 px-2.5 py-0.5 text-[10px] hover:border-primary/60 transition"
+                    className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-surface-elevated/70 border border-border/40 px-2.5 py-1 text-[10px] hover:border-primary/60 transition"
                     title={
                       aiSettings.mode === "api_key"
                         ? `Using your own ${aiSettings.provider ?? ""} API key — click to change`
@@ -3861,7 +3861,7 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                         return (
                           <>
                             <span className="h-1.5 w-1.5 rounded-full bg-violet-400 animate-pulse" />
-                            <span className="text-muted-foreground">{label}</span>
+                            <span className="truncate text-muted-foreground">{label}</span>
                           </>
                         );
                       }
@@ -3898,7 +3898,7 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                           <span
                             className={`h-1.5 w-1.5 rounded-full ${recent ? "bg-success animate-pulse" : client ? "bg-emerald-500/60" : "bg-amber-400"}`}
                           />
-                          <span className="text-muted-foreground">{label}</span>
+                          <span className="truncate text-muted-foreground">{label}</span>
                         </>
                       );
                     })()}
@@ -3925,7 +3925,7 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                       const full = pct >= 100;
                       return (
                         <div
-                          className={`inline-flex items-center gap-1.5 rounded-full bg-surface-elevated/60 border px-2.5 py-0.5 text-[10px] tabular-nums ${full ? "border-destructive/60" : near ? "border-amber-400/60" : "border-border/40"}`}
+                          className={`inline-flex items-center gap-1.5 rounded-full bg-surface-elevated/70 border px-2.5 py-1 text-[10px] tabular-nums ${full ? "border-destructive/60" : near ? "border-amber-400/60" : "border-border/40"}`}
                           title={`AI timer: ${used}/${limit} in last 24h · ${aiUsage.used_7d}/${aiUsage.limit_7d} in last 7d${aiUsage.reset_24h ? ` · resets ${new Date(aiUsage.reset_24h).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true })}` : ""}`}
                         >
                           <span
@@ -3939,7 +3939,7 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                     })()}
 
                   <div
-                    className="inline-flex items-center gap-1.5 rounded-full bg-surface-elevated/60 border border-border/40 px-2.5 py-0.5 text-[10px]"
+                    className="inline-flex items-center gap-1.5 rounded-full bg-surface-elevated/70 border border-border/40 px-2.5 py-1 text-[10px]"
                     title={
                       isStudioConnected
                         ? "Roblox Studio plugin connected"
@@ -3955,7 +3955,7 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                   </div>
                 </div>
 
-                <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                <span className="shrink-0 rounded-full border border-border/40 bg-surface-elevated/70 px-2.5 py-1 text-[10px] text-muted-foreground">
                   {chatMode
                     ? `est. ${chatEstimatedCost} cr / chat`
                     : planMode
