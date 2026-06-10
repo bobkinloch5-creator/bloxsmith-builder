@@ -591,6 +591,8 @@ export const COMET_MODEL_MAP: Record<string, { comet: string; thinking?: boolean
   "claude-opus-4-8": { comet: "claude-opus-4-8" },
   "claude-sonnet-4-6-thinking": { comet: "claude-sonnet-4-6", thinking: true },
   "claude-opus-4-8-thinking": { comet: "claude-opus-4-8", thinking: true },
+  // Owner-only experimental route
+  "claude-fable-5": { comet: "claude-fable-5" },
 };
 
 /**
