@@ -445,6 +445,12 @@ export const MODEL_TOOL_CAPABILITIES: Record<
     thinking: true,
     label: "Web + premium reasoning",
   },
+  "claude-fable-5": {
+    tools: true,
+    webSearch: true,
+    thinking: true,
+    label: "Owner-only experimental",
+  },
 };
 
 export function getModelToolCapabilities(modelName: string | null | undefined) {
