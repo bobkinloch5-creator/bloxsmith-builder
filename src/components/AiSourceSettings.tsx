@@ -369,13 +369,86 @@ export function AiSourceSettings({
                   </label>
                 </div>
 
-                {provider === "neokens" || provider === "comet" ? (
+                {provider === "neokens" ? (
                   <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-[11px] text-foreground">
                     <span className="font-semibold">{PROVIDER_LABELS[provider]}</span> uses a shared
-                    site key{" "}
-                    {provider === "neokens" ? "(NEOKENS_API_KEY or ANTHROPIC_API_KEY)" : ""} — no
-                    per-user key needed. The app still charges BloxSmith credits and rate-limits
-                    usage to protect the shared balance.
+                    site key (NEOKENS_API_KEY or ANTHROPIC_API_KEY) — no per-user key needed. The
+                    app still charges BloxSmith credits and rate-limits usage to protect the shared
+                    balance.
+                  </div>
+                ) : provider === "comet" ? (
+                  <div className="space-y-2">
+                    <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-[11px] text-foreground">
+                      <span className="font-semibold">{PROVIDER_LABELS[provider]}</span> defaults to
+                      a shared site key. You can optionally paste your own CometAPI key below —
+                      it's stored encrypted and used only by your projects, bypassing the shared
+                      rate limits.
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                          Your CometAPI key (optional)
+                        </span>
+                        {keys[provider] ? (
+                          <button
+                            onClick={() => handleClearKey(provider)}
+                            disabled={busy === `clear-${provider}`}
+                            className="text-[10px] text-muted-foreground hover:text-foreground"
+                          >
+                            Remove saved key
+                          </button>
+                        ) : null}
+                      </div>
+                      {keys[provider] ? (
+                        <div className="mt-1 flex items-center gap-2 rounded-md border border-success/40 bg-success/5 px-2.5 py-1.5 text-[11px] text-success">
+                          <Check className="h-3.5 w-3.5" />
+                          Personal key on file — saved{" "}
+                          {new Date(keys[provider].updatedAt).toLocaleDateString()}
+                        </div>
+                      ) : (
+                        <div className="mt-1 flex gap-2">
+                          <div className="relative flex-1">
+                            <input
+                              type={showKey ? "text" : "password"}
+                              value={draftKey}
+                              onChange={(e) => setDraftKey(e.target.value)}
+                              placeholder="sk-..."
+                              className="w-full rounded-md border border-border bg-background px-2 py-1.5 pr-8 text-xs font-mono"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowKey((v) => !v)}
+                              className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:text-foreground"
+                            >
+                              {showKey ? (
+                                <EyeOff className="h-3 w-3" />
+                              ) : (
+                                <Eye className="h-3 w-3" />
+                              )}
+                            </button>
+                          </div>
+                          <button
+                            onClick={handleSaveKey}
+                            disabled={busy === "key" || !draftKey.trim()}
+                            className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground disabled:opacity-40"
+                          >
+                            {busy === "key" ? "Saving…" : "Save key"}
+                          </button>
+                        </div>
+                      )}
+                      <p className="mt-1.5 text-[10px] text-muted-foreground">
+                        Get a key at{" "}
+                        <a
+                          href="https://api.cometapi.com"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="underline"
+                        >
+                          api.cometapi.com
+                        </a>
+                        . Stored encrypted in your account.
+                      </p>
+                    </div>
                   </div>
                 ) : (
                   <div>
