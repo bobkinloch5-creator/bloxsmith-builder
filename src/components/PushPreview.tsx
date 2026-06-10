@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { applyGeneration } from "@/lib/ai.functions";
 import { toast } from "sonner";
+import { copyText } from "@/lib/copy";
 import {
   FileCode,
   Radio,
@@ -301,10 +302,7 @@ export function PushPreview({
                               {codeOpen ? "Hide" : "View"}
                             </button>
                             <button
-                              onClick={() => {
-                                navigator.clipboard.writeText(f.content ?? "");
-                                toast.success("Copied script");
-                              }}
+                              onClick={() => void copyText(f.content ?? "", "Copied!")}
                               className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-1.5 py-0.5 text-[10px] text-muted-foreground hover:text-foreground hover:bg-surface shrink-0"
                               title="Copy code"
                             >

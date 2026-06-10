@@ -26,6 +26,7 @@ import {
 
 import pluginSource from "../../plugin-src/BloxSmith.server.lua?raw";
 import { AutoPluginInstaller } from "@/components/AutoPluginInstaller";
+import { copyText } from "@/lib/copy";
 
 const PLUGIN_DOWNLOAD_URL = "/BloxSmith.lua";
 const PLUGIN_VERSION = "latest";
@@ -188,8 +189,7 @@ function PluginWizard() {
 
   const copy = async () => {
     if (!token) return;
-    await navigator.clipboard.writeText(token);
-    toast.success("Token copied");
+    await copyText(token, "Token copied");
   };
 
   // Poll plugin_connections for an active session from Studio
@@ -719,8 +719,7 @@ function PluginSourceReveal({ source }: { source: string }) {
   const [open, setOpen] = useState(false);
   const lineCount = source.split("\n").length;
   const copy = async () => {
-    await navigator.clipboard.writeText(source);
-    toast.success("Plugin source copied");
+    await copyText(source, "Plugin source copied");
   };
   return (
     <div className="rounded-lg border border-border bg-surface/60 overflow-hidden">

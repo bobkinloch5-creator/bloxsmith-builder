@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { getSiteModelHealth } from "@/lib/ai-model-health.functions";
 import { saveProjectAiSettings } from "@/lib/project-ai.functions";
 import {
+  COMING_SOON_MODELS,
   SITE_MODEL_DESCRIPTIONS,
   SITE_PROVIDER_LABELS,
   SITE_PROVIDER_MODELS,
@@ -110,7 +111,7 @@ export function ModelPicker({
   const currentHealth = getHealth(currentProvider, currentModel);
   const normalizedQuery = query.trim().toLowerCase();
   const modelMatches = (p: ProviderId, m: string) => {
-    if (OWNER_ONLY_MODELS.has(m) && !isOwner) return false;
+    if (OWNER_ONLY_MODELS.has(m) && !isOwner && !COMING_SOON_MODELS.has(m)) return false;
     if (!normalizedQuery) return true;
     const desc = SITE_MODEL_DESCRIPTIONS[m] ?? "";
     const providerLabel = SITE_PROVIDER_LABELS[p];
@@ -141,6 +142,7 @@ export function ModelPicker({
 
   const pick = async (p: ProviderId, m: string) => {
     const modelHealth = getHealth(p, m);
+    if (COMING_SOON_MODELS.has(m)) return;
     // Only block a pick when we have a loaded health record that explicitly
     // says the model is down. If health hasn't loaded yet (undefined) or the
     // query errored, allow selection — a transient/empty health response must
@@ -280,7 +282,8 @@ export function ModelPicker({
                   const modelHealth = getHealth(p, m);
                   // Only block genuinely-down models, and only once health has
                   // actually loaded. While loading or on error, keep selectable.
-                  const disabled = Boolean(health.isSuccess && modelHealth?.disabled);
+                  const comingSoon = COMING_SOON_MODELS.has(m);
+                  const disabled = comingSoon || Boolean(health.isSuccess && modelHealth?.disabled);
                   const tone =
                     mult >= 4
                       ? "bg-destructive/20 text-destructive"
@@ -294,7 +297,9 @@ export function ModelPicker({
                       disabled={disabled}
                       onClick={() => pick(p, m)}
                       title={
-                        modelHealth?.disabled
+                        comingSoon
+                          ? "Claude Fable 5 is coming soon and is not available yet."
+                          : modelHealth?.disabled
                           ? `${modelHealth.label}. ${modelHealth.detail ?? "This model is temporarily disabled."}`
                           : undefined
                       }
@@ -320,17 +325,28 @@ export function ModelPicker({
                             >
                               {m}
                             </span>
+                            {comingSoon && (
+                              <span className="shrink-0 rounded-full border border-amber-400/40 bg-amber-400/15 px-1.5 py-px text-[9px] font-bold uppercase tracking-wide text-amber-300">
+                                Coming Soon
+                              </span>
+                            )}
                           </div>
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0">
                           <span
                             className={`rounded-full px-1.5 py-px text-[9px] font-semibold ${
-                              modelHealth?.disabled
+                              comingSoon
+                                ? "bg-amber-400/15 text-amber-300"
+                                : modelHealth?.disabled
                                 ? "bg-destructive/15 text-destructive"
                                 : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300"
                             }`}
                           >
-                            {modelHealth?.disabled ? modelHealth.label : "Online"}
+                            {comingSoon
+                              ? "Later"
+                              : modelHealth?.disabled
+                                ? modelHealth.label
+                                : "Online"}
                           </span>
                           {caps.webSearch ? (
                             <span
@@ -377,7 +393,13 @@ export function ModelPicker({
                           {desc}
                         </div>
                       )}
-                      {modelHealth?.disabled && (
+                      {comingSoon && (
+                        <div className="mt-1 rounded-md border border-amber-400/25 bg-amber-400/10 px-2 py-1 text-[10px] leading-snug text-amber-100">
+                          Claude Fable 5 — Coming Soon. It is not available yet and will be
+                          released once funding and setup are complete.
+                        </div>
+                      )}
+                      {modelHealth?.disabled && !comingSoon && (
                         <div className="mt-0.5 text-[10px] leading-snug text-destructive">
                           {modelHealth.detail ?? "This model is temporarily disabled."}
                         </div>

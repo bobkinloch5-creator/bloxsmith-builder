@@ -3077,6 +3077,10 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                       "Make a loading screen",
                       "1:1 building replica",
                       "Screenshot to Game",
+                      "Marketplace listing",
+                      "Plan next features",
+                      "Improve this script",
+                      "Organize project",
                     ].map((tpl) => (
                       <button
                         key={tpl}
@@ -3091,6 +3095,28 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                             fileInputRef.current?.click();
                           } else if (tpl === "Screenshot to Game") {
                             startScreenshotToGameTool();
+                          } else if (tpl === "Marketplace listing") {
+                            setChatMode(true);
+                            setPrompt(
+                              "Help me prepare a premium Roblox marketplace listing for this project. Create a product title, short description, full description, feature list, tags, pricing ideas, setup instructions, image/preview ideas, thumbnail ideas, and a step-by-step publishing checklist.",
+                            );
+                          } else if (tpl === "Plan next features") {
+                            setChatMode(true);
+                            setThinking(true);
+                            setPrompt(
+                              "Review this project and suggest what I should build next. Organize the recommendations into high-impact features, quick polish tasks, testing steps, and the best next command to send BloxSmith.",
+                            );
+                          } else if (tpl === "Improve this script") {
+                            setChatMode(true);
+                            setThinking(true);
+                            setPrompt(
+                              "Help me improve my current Roblox scripts. Look for bugs, security issues, organization problems, performance risks, and copy-ready fixes I can apply.",
+                            );
+                          } else if (tpl === "Organize project") {
+                            setChatMode(true);
+                            setPrompt(
+                              "Help me organize this Roblox project. Suggest clean folders, script/service placement, naming, milestones, and a step-by-step plan for finishing the game.",
+                            );
                           } else {
                             setPrompt(tpl);
                           }

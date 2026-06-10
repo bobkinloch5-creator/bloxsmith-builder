@@ -8,6 +8,7 @@ import { useAuth } from "@/lib/auth-context";
 import { toggleShowcaseLike, remixShowcaseProject } from "@/lib/showcase.functions";
 import { Heart, GitFork, Sparkles, Loader2, ArrowLeft, Share2 } from "lucide-react";
 import { toast } from "sonner";
+import { copyText } from "@/lib/copy";
 
 export const Route = createFileRoute("/showcase/$projectId")({
   component: () => (<RequireAuth><ShowcaseDetail /></RequireAuth>),
@@ -166,8 +167,7 @@ function ShowcaseDetail() {
                       if (navigator.share) {
                         await navigator.share({ title, text: desc.slice(0, 140), url });
                       } else {
-                        await navigator.clipboard.writeText(url);
-                        toast.success("Share link copied!");
+                        await copyText(url, "Share link copied!");
                       }
                     } catch {
                       /* user cancelled share */

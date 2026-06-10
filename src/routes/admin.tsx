@@ -22,6 +22,7 @@ import { CheckCircle2, XCircle, Loader2, PlayCircle, RefreshCw } from "lucide-re
 import { testAllSiteModels, type ModelTestResult } from "@/lib/model-test.functions";
 import { RobloxDocsPanel } from "@/components/RobloxDocsPanel";
 import { resendConfirmationForUser } from "@/lib/moderator.functions";
+import { copyText } from "@/lib/copy";
 
 export const Route = createFileRoute("/admin")({
   beforeLoad: async () => {
@@ -811,10 +812,7 @@ function Admin() {
                             </div>
                             <button
                               type="button"
-                              onClick={async () => {
-                                await navigator.clipboard.writeText(r.id);
-                                toast.success("User ID copied.");
-                              }}
+                              onClick={() => void copyText(r.id, "User ID copied")}
                               className="text-[10px] text-muted-foreground underline"
                             >
                               Copy ID

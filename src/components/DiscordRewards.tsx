@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { toast } from "sonner";
 import { Copy, Gift, Users } from "lucide-react";
+import { copyText } from "@/lib/copy";
 
 export const DISCORD_INVITE = "https://discord.gg/ZzdqTpntB";
 
@@ -127,10 +128,7 @@ export function DiscordRewards() {
               onFocus={(e) => e.currentTarget.select()}
             />
             <button
-              onClick={() => {
-                navigator.clipboard.writeText(referralLink);
-                toast.success("Referral link copied!");
-              }}
+              onClick={() => void copyText(referralLink, "Referral link copied!")}
               className="rounded-lg bg-primary/10 border border-primary/20 text-primary-glow hover:bg-primary/15 px-3 py-2 text-xs font-semibold transition inline-flex items-center gap-1.5"
             >
               <Copy className="h-3.5 w-3.5" /> Copy

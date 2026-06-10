@@ -2265,7 +2265,7 @@ export function GlobalChat({ inline = false }: { inline?: boolean } = {}) {
             type="button"
             onClick={() => setOpen(true)}
             aria-label="Open chat"
-            className="fixed z-[9998] bottom-[calc(1rem+env(safe-area-inset-bottom))] left-4 md:left-5 flex items-center gap-2 rounded-full border border-border bg-surface-elevated px-4 py-2.5 text-foreground shadow-2xl ring-1 ring-black/5 transition hover:bg-surface hover:scale-[1.02] active:scale-95"
+            className="fixed z-[9998] bottom-[calc(1.75rem+env(safe-area-inset-bottom))] left-3 flex items-center gap-2 rounded-full border border-border bg-surface-elevated px-4 py-2.5 text-foreground shadow-2xl ring-1 ring-black/5 transition hover:bg-surface hover:scale-[1.02] active:scale-95 sm:left-4 md:left-5"
           >
             <MessagesSquare className="h-4 w-4 text-primary" />
             <span className="text-sm font-semibold text-foreground">Chat</span>
@@ -2286,7 +2286,7 @@ export function GlobalChat({ inline = false }: { inline?: boolean } = {}) {
             "flex flex-col overflow-hidden border-border bg-surface-elevated/98 shadow-2xl backdrop-blur-xl",
             inline
               ? "relative h-[min(720px,calc(100dvh-14rem))] min-h-[420px] w-full rounded-2xl border"
-              : "fixed inset-x-3 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-[9999] h-[min(82dvh,720px)] max-h-[calc(100dvh-1.5rem-env(safe-area-inset-bottom))] rounded-2xl border md:inset-x-auto md:left-5 md:right-auto md:bottom-[calc(1.25rem+env(safe-area-inset-bottom))]",
+              : "fixed inset-x-3 bottom-[calc(1.25rem+env(safe-area-inset-bottom))] z-[9999] h-[min(80dvh,720px)] max-h-[calc(100dvh-2.5rem-env(safe-area-inset-bottom))] rounded-2xl border md:inset-x-auto md:left-5 md:right-auto md:bottom-[calc(1.75rem+env(safe-area-inset-bottom))]",
           )}
           style={{
             ...(chatBackgroundStyle(prefs) ?? {}),

@@ -42,6 +42,7 @@ import { ProfileCustomizationCard } from "@/components/ProfileCustomizationCard"
 import { RoleBadges } from "@/components/RoleBadge";
 import { ProfileBadgeRow, getBadgeDef } from "@/components/profile/ProfileBadges";
 import { formatCreditBalance } from "@/lib/credit-display";
+import { copyText } from "@/lib/copy";
 import {
   activityProfileBadgeIds,
   mergeProfileBadgeIds,
@@ -909,10 +910,7 @@ function Account() {
                         {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </button>
                       <button
-                        onClick={() => {
-                          navigator.clipboard.writeText(token);
-                          toast.success("Token copied to clipboard");
-                        }}
+                        onClick={() => void copyText(token, "Token copied")}
                         className="rounded-lg border border-border px-3 py-2 hover:bg-surface-elevated transition"
                         title="Copy token"
                       >

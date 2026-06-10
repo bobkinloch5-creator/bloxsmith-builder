@@ -253,6 +253,11 @@ const painPoints = [
 const comingSoon = [
   {
     icon: Brain,
+    title: "Claude Fable 5",
+    desc: "Claude Fable 5 is coming soon to BloxSmith once funding and setup are complete. It is planned for advanced reasoning, long project planning, game creation, scripting help, and high-quality agentic work.",
+  },
+  {
+    icon: Brain,
     title: "Smarter project scanner",
     desc: "Deeper project awareness so BloxSmith understands your game better.",
   },
@@ -276,6 +281,56 @@ const comingSoon = [
     title: "More payment options",
     desc: "More ways to buy credits and keep building without friction.",
   },
+];
+
+const poweredBy = [
+  {
+    name: "Claude",
+    detail: "Careful reasoning, project planning, scripting help, and long-context architecture.",
+  },
+  {
+    name: "OpenAI / GPT",
+    detail: "General building, coding, refactors, explanations, and structured Roblox workflows.",
+  },
+  {
+    name: "Gemini",
+    detail: "Fast grounded answers, large-context planning, and visual/reference-style reasoning.",
+  },
+  {
+    name: "DeepSeek",
+    detail: "Budget-friendly coding, debugging, ModuleScripts, RemoteEvents, and system fixes.",
+  },
+  {
+    name: "Grok",
+    detail: "Creative game ideas, mechanics, naming, quests, monetization concepts, and trends.",
+  },
+  {
+    name: "Qwen",
+    detail: "Structured Luau generation, multi-file systems, data models, and precise edits.",
+  },
+  {
+    name: "MiniMax",
+    detail: "Long-context project prompts, multi-script planning, and efficient builder support.",
+  },
+  {
+    name: "Meshy",
+    detail: "Connected 3D/model creation workflows for Roblox-ready asset planning.",
+  },
+  {
+    name: "Tripo",
+    detail: "3D model generation, animation workflows, rigged exports, and Studio-ready assets.",
+  },
+  {
+    name: "BloxSmith Tools",
+    detail: "Roblox docs search, toolbox asset planning, plugin sync, memory, and project context.",
+  },
+];
+
+const assistantWins = [
+  "Plans new game ideas and organizes projects into clear next steps.",
+  "Improves scripts, explains bugs, and tells users what to build next.",
+  "Uses chat history and AI memory to continue old conversations.",
+  "Prepares marketplace titles, descriptions, tags, pricing ideas, previews, and setup instructions.",
 ];
 
 const comparison = [
@@ -793,6 +848,70 @@ function Landing() {
       </section>
 
       <section className="mx-auto max-w-7xl px-4 sm:px-6 py-12 sm:py-20">
+        <div className="grid gap-8 lg:grid-cols-[0.95fr_1.05fr] lg:items-center">
+          <div>
+            <SectionTitle
+              badge="Private assistant"
+              icon={Brain}
+              title="Plan, build, improve, and list your Roblox work"
+              desc="BloxSmith is tuned to act like a private game-building and scripting assistant, with project context, chat history, and memory available when you return."
+            />
+            <div className="mt-8 grid gap-3 sm:grid-cols-2">
+              {assistantWins.map((win) => (
+                <div
+                  key={win}
+                  className="rounded-2xl border border-border bg-surface/35 px-4 py-3 text-sm text-muted-foreground"
+                >
+                  <CheckCircle2 className="mr-2 inline h-4 w-4 text-success" />
+                  {win}
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="rounded-3xl glass-strong gradient-border p-5 sm:p-7">
+            <div className="grid gap-3">
+              {[
+                ["Idea plan", "Turn a rough idea into features, systems, milestones, and next actions."],
+                ["Script pass", "Explain bugs, improve Luau, and split code into copy-ready blocks."],
+                ["Marketplace kit", "Prepare titles, descriptions, tags, pricing, previews, setup, and listing steps."],
+              ].map(([label, desc]) => (
+                <div key={label} className="rounded-2xl border border-border/70 bg-background/45 p-4">
+                  <div className="inline-flex items-center gap-2 text-sm font-semibold">
+                    <Sparkles className="h-4 w-4 text-primary-glow" /> {label}
+                  </div>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{desc}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-7xl px-4 sm:px-6 py-12 sm:py-20">
+        <SectionTitle
+          badge="Powered by"
+          icon={Sparkles}
+          title="A premium stack of AI models and creator tools"
+          desc="BloxSmith routes different jobs to the providers and tools best suited for Roblox planning, coding, visual ideas, 3D assets, and agentic project work."
+        />
+        <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          {poweredBy.map((provider) => (
+            <div
+              key={provider.name}
+              className="rounded-2xl border border-border bg-surface/35 p-4 transition hover:border-primary/35 hover:bg-primary/5"
+            >
+              <div className="inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 text-xs font-bold text-primary-glow">
+                <Bot className="h-3.5 w-3.5" /> {provider.name}
+              </div>
+              <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+                {provider.detail}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-7xl px-4 sm:px-6 py-12 sm:py-20">
         <SectionTitle
           badge="Why BloxSmith"
           icon={Trophy}
@@ -1101,11 +1220,23 @@ function Landing() {
           title="BloxSmith keeps getting smarter"
           desc="Upcoming upgrades planned to make Roblox building even faster and more powerful."
         />
-        <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {comingSoon.map((item) => (
-            <div key={item.title} className="glass rounded-2xl p-5">
-              <item.icon className="h-5 w-5 text-primary-glow" />
-              <h3 className="mt-3 font-semibold text-sm">{item.title}</h3>
+            <div
+              key={item.title}
+              className="glass rounded-2xl p-5 transition hover:border-primary/35 hover:bg-primary/5"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <item.icon className="h-5 w-5 shrink-0 text-primary-glow" />
+                {item.title === "Claude Fable 5" && (
+                  <span className="rounded-full border border-amber-400/40 bg-amber-400/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-300">
+                    Coming Soon
+                  </span>
+                )}
+              </div>
+              <h3 className="mt-3 font-semibold text-sm">
+                {item.title === "Claude Fable 5" ? "Claude Fable 5 — Coming Soon" : item.title}
+              </h3>
               <p className="mt-1 text-xs text-muted-foreground leading-relaxed">{item.desc}</p>
             </div>
           ))}

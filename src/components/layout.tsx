@@ -54,6 +54,7 @@ import {
 } from "@/lib/profile-badges";
 import { ProfileMenuAvatar, ProfileMenuPreview } from "@/components/profile/ProfileMenuPreview";
 import { LAUNCH_PROMO_CODE, LAUNCH_PROMO_COPY, LAUNCH_PROMO_END_LABEL } from "@/lib/launch-promo";
+import { copyText } from "@/lib/copy";
 
 type NavItem = {
   to: string;
@@ -154,34 +155,11 @@ function BetaNotice() {
 function LaunchPromoBanner() {
   const [copied, setCopied] = useState(false);
 
-  const fallbackCopy = () => {
-    const textarea = document.createElement("textarea");
-    textarea.value = LAUNCH_PROMO_CODE;
-    textarea.setAttribute("readonly", "");
-    textarea.style.position = "fixed";
-    textarea.style.opacity = "0";
-    document.body.appendChild(textarea);
-    textarea.select();
-    const ok = document.execCommand("copy");
-    document.body.removeChild(textarea);
-    return ok;
-  };
-
   const copyCode = async () => {
-    try {
-      if (navigator.clipboard?.writeText) {
-        try {
-          await navigator.clipboard.writeText(LAUNCH_PROMO_CODE);
-        } catch {
-          if (!fallbackCopy()) throw new Error("Promo code copy failed");
-        }
-      } else {
-        if (!fallbackCopy()) throw new Error("Promo code copy failed");
-      }
+    const ok = await copyText(LAUNCH_PROMO_CODE, "Promo code copied");
+    if (ok) {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1800);
-    } catch {
-      setCopied(false);
     }
   };
 

@@ -5,6 +5,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { searchToolboxFn } from "@/lib/toolbox.functions";
 import { Loader2, Search, Copy, ExternalLink, Package } from "lucide-react";
 import { toast } from "sonner";
+import { copyText } from "@/lib/copy";
 
 export const Route = createFileRoute("/toolbox")({
   component: ToolboxPage,
@@ -96,12 +97,7 @@ function ToolboxPage() {
   };
 
   const copy = async (id: number) => {
-    try {
-      await navigator.clipboard.writeText(`rbxassetid://${id}`);
-      toast.success(`Copied rbxassetid://${id}`);
-    } catch {
-      toast.error("Couldn't copy");
-    }
+    await copyText(`rbxassetid://${id}`, `Copied rbxassetid://${id}`);
   };
 
   return (

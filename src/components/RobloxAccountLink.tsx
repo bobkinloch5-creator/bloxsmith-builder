@@ -10,6 +10,7 @@ import {
   Loader2,
   Gamepad2,
 } from "lucide-react";
+import { copyText } from "@/lib/copy";
 import {
   startRobloxLink,
   confirmRobloxLink,
@@ -112,8 +113,7 @@ export function RobloxAccountLink() {
 
   async function copyCode() {
     if (!code) return;
-    await navigator.clipboard.writeText(code);
-    toast.success("Code copied");
+    await copyText(code, "Code copied");
   }
 
   return (

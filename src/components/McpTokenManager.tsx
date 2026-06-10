@@ -3,6 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useAuth } from "@/lib/auth-context";
 import { generateMcpToken, revokeMcpToken, getMcpTokenStatus } from "@/lib/mcp-tokens.functions";
 import { toast } from "sonner";
+import { copyText } from "@/lib/copy";
 import {
   Copy,
   KeyRound,
@@ -150,10 +151,7 @@ export function McpTokenManager() {
               onFocus={(e) => e.currentTarget.select()}
             />
             <button
-              onClick={() => {
-                navigator.clipboard.writeText(token);
-                toast.success("Token copied to clipboard");
-              }}
+              onClick={() => void copyText(token, "Token copied")}
               className="rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground px-3 py-2 text-xs font-semibold inline-flex items-center gap-1.5"
             >
               <Copy className="h-3.5 w-3.5" /> Copy

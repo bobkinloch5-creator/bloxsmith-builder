@@ -3,17 +3,15 @@ import { Check, Copy, Download, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { copyText } from "@/lib/copy";
 
 function CodeBlock({ lang, content }: { lang: string; content: string }) {
   const [copied, setCopied] = useState(false);
   const onCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(content);
+    const ok = await copyText(content, "Copied!");
+    if (ok) {
       setCopied(true);
-      toast.success("Code copied");
       setTimeout(() => setCopied(false), 1500);
-    } catch {
-      toast.error("Copy failed");
     }
   };
   return (
@@ -102,8 +100,25 @@ function GeneratedImage({ src, alt }: { src?: string; alt?: string }) {
 }
 
 export const AssistantMessage = memo(function AssistantMessage({ content }: { content: string }) {
+  const [copiedAll, setCopiedAll] = useState(false);
+  const copyAll = async () => {
+    const ok = await copyText(content, "Copied!");
+    if (ok) {
+      setCopiedAll(true);
+      setTimeout(() => setCopiedAll(false), 1500);
+    }
+  };
   return (
-    <div className="text-sm leading-relaxed break-words [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+    <div className="group/message relative text-sm leading-relaxed break-words [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+      <button
+        type="button"
+        onClick={copyAll}
+        className="absolute right-0 top-0 z-10 inline-flex items-center gap-1 rounded-md border border-border bg-surface-elevated/90 px-2 py-1 text-[10px] font-medium text-muted-foreground opacity-0 shadow-sm transition hover:text-foreground group-hover/message:opacity-100 focus:opacity-100"
+        title="Copy this generated answer"
+      >
+        {copiedAll ? <Check className="h-3 w-3 text-success" /> : <Copy className="h-3 w-3" />}
+        {copiedAll ? "Copied!" : "Copy"}
+      </button>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{

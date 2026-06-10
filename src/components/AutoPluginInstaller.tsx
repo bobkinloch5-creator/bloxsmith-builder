@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Copy, Check, Terminal, Apple, MonitorCog } from "lucide-react";
-import { toast } from "sonner";
+import { copyText } from "@/lib/copy";
 
 const PLUGIN_URL = "https://bloxsmith.pro/BloxSmith.lua";
 
@@ -19,13 +19,10 @@ export function AutoPluginInstaller({ onInstalled }: { onInstalled?: () => void 
   const cmd = useMemo(() => (os === "mac" ? MAC_CMD : PS_CMD), [os]);
 
   const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(cmd);
+    const ok = await copyText(cmd, "Installer command copied");
+    if (ok) {
       setCopied(true);
-      toast.success("Installer command copied — paste it into a terminal");
       setTimeout(() => setCopied(false), 1500);
-    } catch {
-      toast.error("Couldn't copy — select and copy manually");
     }
   };
 
