@@ -110,6 +110,7 @@ export function ModelPicker({
   const currentHealth = getHealth(currentProvider, currentModel);
   const normalizedQuery = query.trim().toLowerCase();
   const modelMatches = (p: ProviderId, m: string) => {
+    if (OWNER_ONLY_MODELS.has(m) && !isOwner) return false;
     if (!normalizedQuery) return true;
     const desc = SITE_MODEL_DESCRIPTIONS[m] ?? "";
     const providerLabel = SITE_PROVIDER_LABELS[p];
