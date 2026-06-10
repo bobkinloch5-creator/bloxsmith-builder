@@ -32,11 +32,7 @@ export const saveOnboardingProgress = createServerFn({ method: "POST" })
         // Fallback: the RPC may be missing if its migration hasn't been run on
         // this database. Do the same one-time-reward logic in code so the user
         // still gets credited exactly once instead of getting nothing.
-        const { data: profile } = await (supabase as any)
-          .from("profiles")
-          .select("onboarding_reward_claimed")
-          .eq("id", userId)
-          .maybeSingle();
+        const { data: profile } = await (supabase as any).rpc("get_my_profile");
 
         const alreadyClaimed = !!profile?.onboarding_reward_claimed;
 

@@ -790,12 +790,8 @@ function ProjectEditor() {
 
   const refreshCredits = async () => {
     if (!user) return;
-    const { data } = await supabase
-      .from("profiles")
-      .select("credits")
-      .eq("id", user.id)
-      .maybeSingle();
-    if (data) setCredits(data.credits);
+    const { data } = await (supabase as any).rpc("get_my_profile");
+    if (data) setCredits((data as { credits?: number }).credits ?? 0);
   };
 
   useEffect(() => {

@@ -68,11 +68,6 @@ type AuthCtx = {
 
 const Ctx = createContext<AuthCtx | null>(null);
 
-const PROFILE_SELECT_FULL =
-  "id,display_name,username,username_normalized,avatar_url,banner_url,bio,specialization,credits,discord_claimed,referral_code,referred_by,hide_email,chat_name_gradient,chat_text_gradient,chat_icon,chat_nickname,chat_font,profile_accent,profile_card_color,profile_card_effect,profile_effect,profile_background,custom_background_url,profile_layout,pfp_effect,status_message,pronouns,location,private_profile,presence_enabled,presence_status,show_activity,last_seen_at,profile_badges,profile_decoration,onboarding_completed_at,onboarding_step,onboarding_reward_claimed";
-
-const PROFILE_SELECT_CORE =
-  "id,display_name,avatar_url,bio,specialization,credits,discord_claimed,referral_code,referred_by";
 
 function profileMediaPath(url?: string | null) {
   if (!url) return null;
@@ -157,20 +152,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       const [profileRes, { data: r }] = await Promise.all([
-        supabase
-          .from("profiles")
-          .select(PROFILE_SELECT_FULL)
-          .eq("id", uid)
-          .maybeSingle(),
+        (supabase as any).rpc("get_my_profile"),
         (supabase as any).from("user_roles").select("role").eq("user_id", uid),
       ]);
 
       let p = profileRes.data as Partial<Profile> | null;
       if (profileRes.error) {
-        console.warn("[auth] full profile load failed, retrying core fields:", profileRes.error.message);
+        console.warn("[auth] get_my_profile failed, falling back to safe-column select:", profileRes.error.message);
         const { data: coreProfile, error: coreError } = await supabase
           .from("profiles")
-          .select(PROFILE_SELECT_CORE)
+          .select("id,display_name,username,avatar_url,banner_url,bio,specialization")
           .eq("id", uid)
           .maybeSingle();
         if (coreError) throw coreError;

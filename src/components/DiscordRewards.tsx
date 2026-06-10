@@ -24,11 +24,8 @@ export function DiscordRewards() {
   useEffect(() => {
     if (!user) return;
     (async () => {
-      const { count } = await supabase
-        .from("profiles")
-        .select("id", { count: "exact", head: true })
-        .eq("referred_by", user.id);
-      setRefCount(count ?? 0);
+      const { data } = await (supabase as any).rpc("count_my_referrals");
+      setRefCount(typeof data === "number" ? data : 0);
     })();
   }, [user]);
 
