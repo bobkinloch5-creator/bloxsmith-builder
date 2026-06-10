@@ -157,20 +157,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       const [profileRes, { data: r }] = await Promise.all([
-        supabase
-          .from("profiles")
-          .select(PROFILE_SELECT_FULL)
-          .eq("id", uid)
-          .maybeSingle(),
+        (supabase as any).rpc("get_my_profile"),
         (supabase as any).from("user_roles").select("role").eq("user_id", uid),
       ]);
 
       let p = profileRes.data as Partial<Profile> | null;
       if (profileRes.error) {
-        console.warn("[auth] full profile load failed, retrying core fields:", profileRes.error.message);
+        console.warn("[auth] get_my_profile failed, falling back to safe-column select:", profileRes.error.message);
         const { data: coreProfile, error: coreError } = await supabase
           .from("profiles")
-          .select(PROFILE_SELECT_CORE)
+          .select("id,display_name,username,avatar_url,banner_url,bio,specialization")
           .eq("id", uid)
           .maybeSingle();
         if (coreError) throw coreError;
