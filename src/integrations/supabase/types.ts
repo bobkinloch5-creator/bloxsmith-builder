@@ -2105,6 +2105,7 @@ export type Database = {
         Args: { _reward?: number; _step?: number }
         Returns: Json
       }
+      count_my_referrals: { Args: never; Returns: number }
       delete_email: {
         Args: { message_id: number; queue_name: string }
         Returns: boolean
@@ -2115,6 +2116,66 @@ export type Database = {
       }
       ensure_my_profile: { Args: never; Returns: undefined }
       get_ai_usage: { Args: never; Returns: Json }
+      get_my_profile: {
+        Args: never
+        Returns: {
+          avatar_url: string | null
+          ban_reason: string | null
+          banned: boolean
+          banned_at: string | null
+          banner_url: string | null
+          bio: string | null
+          chat_font: string | null
+          chat_icon: string | null
+          chat_name_gradient: string[] | null
+          chat_nickname: string | null
+          chat_text_gradient: string[] | null
+          created_at: string
+          credits: number
+          current_activity: Json | null
+          custom_background_url: string | null
+          discord_claimed: boolean
+          display_name: string | null
+          email: string | null
+          favorite_game_types: string[] | null
+          hide_email: boolean | null
+          id: string
+          last_seen_at: string | null
+          location: string | null
+          onboarding_completed_at: string | null
+          onboarding_reward_claimed: boolean
+          onboarding_step: number | null
+          pfp_effect: string
+          presence_enabled: boolean
+          presence_status: string
+          private_profile: boolean
+          profile_accent: string | null
+          profile_background: string | null
+          profile_badges: string[]
+          profile_card_color: string
+          profile_card_effect: string
+          profile_decoration: string
+          profile_effect: string | null
+          profile_layout: string
+          pronouns: string | null
+          referral_code: string | null
+          referred_by: string | null
+          show_activity: boolean
+          specialization: string | null
+          status_message: string | null
+          theme: string | null
+          updated_at: string
+          user_id: string
+          username: string | null
+          username_normalized: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "profiles"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       grant_credits_service: {
         Args: { _amount: number; _reason?: string; _user_id: string }
         Returns: number
