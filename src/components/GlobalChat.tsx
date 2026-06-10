@@ -999,13 +999,6 @@ export function GlobalChat({ inline = false }: { inline?: boolean } = {}) {
       )
       .on(
         "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "profiles" },
-        (payload) => {
-          mergeAuthorProfile(payload.new as any);
-        },
-      )
-      .on(
-        "postgres_changes",
         { event: "INSERT", schema: "public", table: "global_chat_reactions" },
         (payload) => {
           setReactions((prev) => [...prev, payload.new as Reaction]);
@@ -1220,7 +1213,7 @@ export function GlobalChat({ inline = false }: { inline?: boolean } = {}) {
       lastLevel = (data?.level as number) ?? 1;
     })();
     const ch = supabase
-      .channel(realtimeTopic("bloxsmith-levels"))
+      .channel(`private:user:${user.id}:levels`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "user_levels", filter: `user_id=eq.${user.id}` },
@@ -1251,7 +1244,7 @@ export function GlobalChat({ inline = false }: { inline?: boolean } = {}) {
   useEffect(() => {
     if (!user) return;
     const ch = supabase
-      .channel(realtimeTopic("bloxsmith-dms"))
+      .channel(`private:user:${user.id}:dms`)
       .on(
         "postgres_changes",
         {
