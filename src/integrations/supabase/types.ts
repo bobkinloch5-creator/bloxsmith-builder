@@ -14,6 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
+      achievements: {
+        Row: {
+          category: string
+          created_at: string
+          credit_reward: number
+          description: string
+          icon: string
+          key: string
+          name: string
+          sort_order: number
+          xp_reward: number
+        }
+        Insert: {
+          category?: string
+          created_at?: string
+          credit_reward?: number
+          description?: string
+          icon?: string
+          key: string
+          name: string
+          sort_order?: number
+          xp_reward?: number
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          credit_reward?: number
+          description?: string
+          icon?: string
+          key?: string
+          name?: string
+          sort_order?: number
+          xp_reward?: number
+        }
+        Relationships: []
+      }
       agent_conversations: {
         Row: {
           created_at: string
@@ -1054,7 +1090,8 @@ export type Database = {
           discord_claimed: boolean
           display_name: string | null
           email: string | null
-          hide_email: boolean
+          favorite_game_types: string[] | null
+          hide_email: boolean | null
           id: string
           last_seen_at: string | null
           location: string | null
@@ -1078,7 +1115,6 @@ export type Database = {
           referred_by: string | null
           show_activity: boolean
           specialization: string | null
-          favorite_game_types: string[] | null
           status_message: string | null
           theme: string | null
           updated_at: string
@@ -1105,7 +1141,8 @@ export type Database = {
           discord_claimed?: boolean
           display_name?: string | null
           email?: string | null
-          hide_email?: boolean
+          favorite_game_types?: string[] | null
+          hide_email?: boolean | null
           id?: string
           last_seen_at?: string | null
           location?: string | null
@@ -1129,7 +1166,6 @@ export type Database = {
           referred_by?: string | null
           show_activity?: boolean
           specialization?: string | null
-          favorite_game_types?: string[] | null
           status_message?: string | null
           theme?: string | null
           updated_at?: string
@@ -1156,7 +1192,8 @@ export type Database = {
           discord_claimed?: boolean
           display_name?: string | null
           email?: string | null
-          hide_email?: boolean
+          favorite_game_types?: string[] | null
+          hide_email?: boolean | null
           id?: string
           last_seen_at?: string | null
           location?: string | null
@@ -1180,7 +1217,6 @@ export type Database = {
           referred_by?: string | null
           show_activity?: boolean
           specialization?: string | null
-          favorite_game_types?: string[] | null
           status_message?: string | null
           theme?: string | null
           updated_at?: string
@@ -1815,6 +1851,42 @@ export type Database = {
           },
         ]
       }
+      user_achievements: {
+        Row: {
+          achievement_key: string
+          id: string
+          unlocked_at: string
+          user_id: string
+        }
+        Insert: {
+          achievement_key: string
+          id?: string
+          unlocked_at?: string
+          user_id: string
+        }
+        Update: {
+          achievement_key?: string
+          id?: string
+          unlocked_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_achievements_achievement_key_fkey"
+            columns: ["achievement_key"]
+            isOneToOne: false
+            referencedRelation: "achievements"
+            referencedColumns: ["key"]
+          },
+          {
+            foreignKeyName: "user_achievements_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_badges: {
         Row: {
           badge: string
@@ -1836,6 +1908,24 @@ export type Database = {
           granted_by?: string | null
           id?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      user_blocks: {
+        Row: {
+          blocked_id: string
+          blocker_id: string
+          created_at: string
+        }
+        Insert: {
+          blocked_id: string
+          blocker_id: string
+          created_at?: string
+        }
+        Update: {
+          blocked_id?: string
+          blocker_id?: string
+          created_at?: string
         }
         Relationships: []
       }
@@ -1956,24 +2046,6 @@ export type Database = {
         }
         Relationships: []
       }
-      user_blocks: {
-        Row: {
-          blocker_id: string
-          blocked_id: string
-          created_at: string
-        }
-        Insert: {
-          blocker_id: string
-          blocked_id: string
-          created_at?: string
-        }
-        Update: {
-          blocker_id?: string
-          blocked_id?: string
-          created_at?: string
-        }
-        Relationships: []
-      }
       user_roles: {
         Row: {
           created_at: string
@@ -2023,6 +2095,7 @@ export type Database = {
         Args: { _reason: string; _user_id: string }
         Returns: string
       }
+      block_user: { Args: { _target: string }; Returns: undefined }
       can_access_project: {
         Args: { _project_id: string; _user_id: string }
         Returns: boolean
@@ -2145,6 +2218,11 @@ export type Database = {
         Returns: string
       }
       sync_profile_credits: { Args: { _user_id: string }; Returns: number }
+      unblock_user: { Args: { _target: string }; Returns: undefined }
+      unlock_achievement: {
+        Args: { _key: string; _user_id: string }
+        Returns: boolean
+      }
       update_presence: {
         Args: { _activity?: Json; _status?: string }
         Returns: undefined
