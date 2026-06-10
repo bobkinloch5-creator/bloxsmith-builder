@@ -4,9 +4,20 @@ import { Header } from "@/components/layout";
 import { AiSourceSettings } from "@/components/AiSourceSettings";
 import { ModelPicker } from "@/components/ModelPicker";
 import { useAiBusySounds } from "@/hooks/useSounds";
-import { SITE_PROVIDER_LABELS, type SiteProviderId } from "@/lib/ai-models";
+import {
+  getModelCreditMultiplier,
+  SITE_PROVIDER_LABELS,
+  type SiteProviderId,
+} from "@/lib/ai-models";
 import type { MapGenerationStrategy } from "@/lib/ai-modes";
 import { stripModelReasoning } from "@/lib/utils";
+import {
+  estimateReasoningCredits,
+  getReasoningLevel,
+  REASONING_LEVELS,
+  shouldUseThinking,
+  type ReasoningLevel,
+} from "@/lib/reasoning";
 
 import { useAuth } from "@/lib/auth-context";
 import { useTheme, type Theme } from "@/hooks/useTheme";
@@ -131,6 +142,7 @@ import { TaskBoard } from "@/components/TaskBoard";
 import { TeamChat } from "@/components/TeamChat";
 import { ProjectCollaboratorsButton } from "@/components/ProjectCollaboratorsButton";
 import { MessagesSquare, Kanban } from "lucide-react";
+import { ToolboxAssetPicker, type ToolboxPickerAsset } from "@/components/ToolboxAssetPicker";
 
 export const Route = createFileRoute("/project/$projectId")({
   component: () => (
@@ -460,7 +472,7 @@ function ProjectEditor() {
     setPrompt(
       "Screenshot-to-game reconstruction. Treat every attached image as a visual specification. First infer the genre, player goal, camera, scale, spatial layout, landmarks, traversal routes, palette, materials, lighting, atmosphere, UI hierarchy, visible text, controls, props, characters/enemies, and likely core loop. Then build a cohesive playable Roblox-safe version that preserves the composition and feel without copying protected logos or exact copyrighted characters. Recreate the visible map with intentional geometry and representative assets; implement the core gameplay loop with complete server/client scripts, remotes, spawn/checkpoints/objectives as needed; reproduce the visible HUD/menu responsively; match Lighting, post effects, VFX, and audio mood; organize everything into proper Roblox services. Do not return a description-only answer, empty folders, random filler, or a generic template unrelated to the screenshot. Where details are hidden, infer the smallest polished system consistent with the evidence. End with a short Play-mode verification checklist and clearly note only the details that had to be inferred.",
     );
-    setThinking(true);
+    setReasoning("deep");
     setPlanMode(false);
     toggleChatMode(false);
     fileInputRef.current?.click();
@@ -478,6 +490,7 @@ function ProjectEditor() {
     chatMode: boolean;
     planMode: boolean;
     webSearch: boolean;
+    reasoningLevel: ReasoningLevel;
   };
   const [msgQueue, setMsgQueue] = useState<QueuedMsg[]>([]);
   const [editingQueueId, setEditingQueueId] = useState<string | null>(null);
@@ -498,6 +511,7 @@ function ProjectEditor() {
 
   const [credits, setCredits] = useState<number | null>(null);
   const GENERATE_COST = 3;
+  const PLAN_COST = 1;
   const outOfCredits = !isOwner && credits !== null && credits < GENERATE_COST;
   const [aiMode, setAiMode] = useState<string>("build");
   // Map mode is always Auto now (the AI picks Toolbox vs custom per request).
@@ -607,6 +621,17 @@ function ProjectEditor() {
   const CHAT_COST = 1;
   const runChat = useServerFn(chatWithAI);
   const [thinking, setThinking] = useState(false);
+  const [reasoningLevel, setReasoningLevel] = useState<ReasoningLevel>(() => {
+    if (typeof window === "undefined") return "balanced";
+    const saved = localStorage.getItem("bs_reasoning_level") as ReasoningLevel | null;
+    return REASONING_LEVELS.some((level) => level.id === saved) ? saved! : "balanced";
+  });
+  const setReasoning = (level: ReasoningLevel) => {
+    setReasoningLevel(level);
+    setThinking(shouldUseThinking(level));
+    if (typeof window !== "undefined") localStorage.setItem("bs_reasoning_level", level);
+  };
+  const [showToolboxPanel, setShowToolboxPanel] = useState(false);
   // Web-search toggle: when on, the AI is pushed to call the web_search /
   // fetch_url tools to verify facts (Luau APIs, current best practices,
   // game-design patterns) before answering / building.
@@ -628,6 +653,18 @@ function ProjectEditor() {
     model: null,
   });
   const [showAiSourceModal, setShowAiSourceModal] = useState(false);
+  const selectedModelMultiplier = getModelCreditMultiplier(aiSettings.model);
+  const currentReasoning = getReasoningLevel(reasoningLevel);
+  const estimateCost = (baseCost: number) =>
+    isOwner ? 0 : estimateReasoningCredits(baseCost, selectedModelMultiplier, reasoningLevel);
+  const chatEstimatedCost = estimateCost(CHAT_COST);
+  const planEstimatedCost = estimateCost(PLAN_COST);
+  const buildEstimatedCost = estimateCost(GENERATE_COST);
+  const currentEstimatedCost = chatMode
+    ? chatEstimatedCost
+    : planMode
+      ? planEstimatedCost
+      : buildEstimatedCost;
   const [aiUsage, setAiUsage] = useState<{
     used_5h: number;
     limit_5h: number;
@@ -704,7 +741,6 @@ function ProjectEditor() {
     {},
   );
   const runPlan = useServerFn(planBuild);
-  const PLAN_COST = 1;
   const [validationByMsg, setValidationByMsg] = useState<
     Record<string, { errors: any[]; warnings: any[]; originalPrompt: string }>
   >({});
@@ -1291,11 +1327,20 @@ function ProjectEditor() {
 
   const runGenerate = async (
     userPrompt: string,
-    opts?: { skipUserBubble?: boolean; images?: string[]; forceThinking?: boolean },
+    opts?: {
+      skipUserBubble?: boolean;
+      images?: string[];
+      forceThinking?: boolean;
+      reasoningLevel?: ReasoningLevel;
+    },
   ) => {
     if (aiBusy) return;
-    if (outOfCredits) {
-      toast.error("Out of credits. Buy more or wait for the daily refill.");
+    const requestReasoningLevel = opts?.reasoningLevel ?? reasoningLevel;
+    const requestBuildEstimate = isOwner
+      ? 0
+      : estimateReasoningCredits(GENERATE_COST, selectedModelMultiplier, requestReasoningLevel);
+    if (!isOwner && credits !== null && credits < requestBuildEstimate) {
+      toast.error(`Not enough credits. This request is estimated at ${requestBuildEstimate} credits.`);
       return;
     }
     setAiBusy(true);
@@ -1349,7 +1394,8 @@ function ProjectEditor() {
           prompt: userPrompt,
           mode: "generate",
           preview: !autoExecute,
-          thinking: opts?.forceThinking ?? thinking,
+          thinking: opts?.forceThinking ?? shouldUseThinking(requestReasoningLevel),
+          reasoningLevel: requestReasoningLevel,
           ...(mapStrategy ? { mapStrategy } : {}),
           ...(imgs.length ? { imageDataUrls: imgs } : {}),
         },
@@ -1363,6 +1409,7 @@ function ProjectEditor() {
         status?: string;
         dangers?: string[];
         aiActivity?: any[];
+        creditsUsed?: number;
       };
 
       if (stopRequested.current) {
@@ -1415,7 +1462,11 @@ function ProjectEditor() {
         ((out.queuedCount ?? out.actions?.length ?? 0) > 0
           ? `Queued ${out.queuedCount ?? out.actions?.length} operation${(out.queuedCount ?? out.actions?.length) === 1 ? "" : "s"} for Studio.`
           : "The AI didn't return a build this time. Try again, or rephrase into a smaller step (e.g. 'just the spawn area' or 'just the shop UI').");
-      const fullContent = baseMessage + vLine + dangerLine + askLine + sentLine;
+      const creditLine =
+        typeof out.creditsUsed === "number"
+          ? `\n\nCredits: estimated ${requestBuildEstimate}, used ${out.creditsUsed}.`
+          : "";
+      const fullContent = baseMessage + vLine + dangerLine + askLine + sentLine + creditLine;
       setMessages((m) => [...m, { id: tempId, role: "assistant", content: fullContent }]);
       // Snapshot pre-state of every file the AI is about to touch, so the user
       // can hit "Revert" to undo this batch (restore old content / delete new
@@ -1533,17 +1584,27 @@ function ProjectEditor() {
     }
   };
 
-  const runPlanRequest = async (userPrompt: string) => {
+  const runPlanRequest = async (userPrompt: string, requestReasoningLevel = reasoningLevel) => {
     if (aiBusy) return;
-    if (!isOwner && credits !== null && credits < PLAN_COST) {
-      toast.error("Not enough credits for a plan.");
+    const requestPlanEstimate = isOwner
+      ? 0
+      : estimateReasoningCredits(PLAN_COST, selectedModelMultiplier, requestReasoningLevel);
+    if (!isOwner && credits !== null && credits < requestPlanEstimate) {
+      toast.error(`Not enough credits for this plan. Estimated cost: ${requestPlanEstimate}.`);
       return;
     }
     setAiBusy(true);
     await pushMsg("user", `📋 Plan: ${userPrompt}`);
     try {
-      const out: any = await runPlan({ data: { projectId, prompt: userPrompt, thinking } });
-      const body = `Here's the build plan (no files written yet):\n\n${out.plan}\n\nReview it, then click "Build this plan" to execute, or refine your request.`;
+      const out: any = await runPlan({
+        data: {
+          projectId,
+          prompt: userPrompt,
+          thinking: shouldUseThinking(requestReasoningLevel),
+          reasoningLevel: requestReasoningLevel,
+        },
+      });
+      const body = `Here's the build plan (no files written yet):\n\n${out.plan}\n\nReview it, then click "Build this plan" to execute, or refine your request.\n\nCredits: estimated ${requestPlanEstimate}, used ${out.cost ?? requestPlanEstimate}.`;
       const tempId = crypto.randomUUID();
       setMessages((m) => [...m, { id: tempId, role: "assistant", content: body }]);
       const realId = await persistMsg("assistant", body, {
@@ -1565,10 +1626,17 @@ function ProjectEditor() {
     }
   };
 
-  const runChatRequest = async (userPrompt: string, images: string[] = []) => {
+  const runChatRequest = async (
+    userPrompt: string,
+    images: string[] = [],
+    requestReasoningLevel = reasoningLevel,
+  ) => {
     if (aiBusy) return;
-    if (!isOwner && credits !== null && credits < CHAT_COST) {
-      toast.error("Not enough credits for chat.");
+    const requestChatEstimate = isOwner
+      ? 0
+      : estimateReasoningCredits(CHAT_COST, selectedModelMultiplier, requestReasoningLevel);
+    if (!isOwner && credits !== null && credits < requestChatEstimate) {
+      toast.error(`Not enough credits for this chat. Estimated cost: ${requestChatEstimate}.`);
       return;
     }
     setAiBusy(true);
@@ -1588,15 +1656,22 @@ function ProjectEditor() {
           projectId,
           prompt: userPrompt,
           history,
-          thinking,
+          thinking: shouldUseThinking(requestReasoningLevel),
+          reasoningLevel: requestReasoningLevel,
           ...(images.length ? { attachments: images } : {}),
         },
       });
-      const realId = await persistMsg("assistant", out.reply, { kind: "chat" });
+      const replyWithCredits = `${out.reply}\n\nCredits: estimated ${requestChatEstimate}, used ${out.cost ?? requestChatEstimate}.`;
+      const realId = await persistMsg("assistant", replyWithCredits, { kind: "chat" });
       setMessages((m) =>
         m.map((x) =>
           x.id === tempAssistantId
-            ? { ...x, id: realId ?? tempAssistantId, content: out.reply, actions: { kind: "chat" } }
+            ? {
+                ...x,
+                id: realId ?? tempAssistantId,
+                content: replyWithCredits,
+                actions: { kind: "chat" },
+              }
             : x,
         ),
       );
@@ -1636,15 +1711,31 @@ function ProjectEditor() {
       ? "\n\n[WEB SEARCH ENABLED] You MUST call the web_search tool (and fetch_url for promising results) before answering or building. Cite at least one source URL in your reply."
       : "";
     const composedPrompt = (q.prompt || "Analyze the attached image(s) and help.") + webHint;
-    if (q.chatMode) await runChatRequest(composedPrompt, q.attachments);
-    else if (q.planMode) await runPlanRequest(composedPrompt);
-    else await runGenerate(composedPrompt, { images: q.attachments });
+    if (q.chatMode) await runChatRequest(composedPrompt, q.attachments, q.reasoningLevel);
+    else if (q.planMode) await runPlanRequest(composedPrompt, q.reasoningLevel);
+    else
+      await runGenerate(composedPrompt, {
+        images: q.attachments,
+        reasoningLevel: q.reasoningLevel,
+      });
   };
 
   const send = async () => {
     if (!prompt.trim() && attachments.length === 0) return;
     if (aiUsageBlocked) {
       toast.error(`Daily AI timer used up. Try again at ${aiUsageResetLabel}.`);
+      return;
+    }
+    const promptText = prompt.trim();
+    const wantsUserPickedAsset =
+      !chatMode &&
+      !planMode &&
+      /\b(add|insert|find|use|place|get)\b/i.test(promptText) &&
+      /\b(toolbox|asset|model|free model|creator store|marketplace model)\b/i.test(promptText) &&
+      !/\b(?:asset\s*id|assetid|rbxassetid):?\s*\d{4,}|\b\d{7,}\b/i.test(promptText);
+    if (wantsUserPickedAsset) {
+      setShowToolboxPanel(true);
+      toast.message("Pick the exact Roblox asset you want, then click Add to Game.");
       return;
     }
     const queued: QueuedMsg = {
@@ -1657,6 +1748,7 @@ function ProjectEditor() {
       chatMode,
       planMode,
       webSearch,
+      reasoningLevel,
     };
     setPrompt("");
     setAttachments([]);
@@ -1693,6 +1785,7 @@ function ProjectEditor() {
       chatMode: false,
       planMode: false,
       webSearch,
+      reasoningLevel,
     };
     if (aiBusy) {
       setMsgQueue((prev) => [...prev, queued]);
@@ -1700,6 +1793,46 @@ function ProjectEditor() {
       return;
     }
     await runQueuedMessage(queued);
+  };
+
+  const addToolboxAssetToGame = async (asset: ToolboxPickerAsset) => {
+    if (!canEdit) {
+      toast.error("View-only access — ask the owner for editor access to add assets.");
+      return;
+    }
+    const parent =
+      /audio|sound/i.test(asset.assetType)
+        ? "SoundService"
+        : /decal|image/i.test(asset.assetType)
+          ? "ReplicatedStorage/BloxSmith/Images"
+          : "Workspace/GeneratedAssets";
+    await runQueuePluginAction({
+      data: {
+        projectId,
+        actionType: "insert_toolbox_asset",
+        payload: {
+          type: "insert_toolbox_asset",
+          assetId: asset.id,
+          name: asset.name,
+          parent,
+          scanScripts: true,
+          removeUnsafeScripts: true,
+          removeScriptsFromDecorativeAssets: true,
+          freeOnly: true,
+          publicOnly: true,
+          requiresApprovalIfScriptsFound: true,
+          selectedByUser: true,
+          source: "bloxsmith_toolbox_picker",
+        },
+      } as any,
+    });
+    toast.success(`Queued ${asset.name} for Studio`);
+    await pushMsg(
+      "assistant",
+      `Queued the exact toolbox asset you picked: ${asset.name} by ${asset.creator || "Unknown creator"} (assetId ${asset.id}). It will be scanned and inserted into ${parent} by the Studio plugin.`,
+      { kind: "toolbox_asset", assetId: asset.id, assetName: asset.name },
+    );
+    refreshAiContext();
   };
 
   // Auto-drain the queue when the AI finishes the current request.
@@ -1727,7 +1860,7 @@ function ProjectEditor() {
     } else {
       toast.info("Setting up your playtest scene in Studio…");
     }
-    setThinking(true);
+    setReasoning("deep");
     setWebSearch(true);
     setPlanMode(false);
     toggleChatMode(false);
@@ -2555,7 +2688,7 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                 <OrganizeProjectButton projectId={projectId} studioConnected={isStudioConnected} />
                 <ChatSettings
                   thinking={thinking}
-                  onToggleThinking={setThinking}
+                  onToggleThinking={(value) => setReasoning(value ? "deep" : "balanced")}
                   autoExecute={autoExecute}
                   onToggleAutoExecute={toggleAutoExecute}
                   planMode={planMode}
@@ -2626,7 +2759,7 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                   Plan
                 </span>
                 <span className="mt-1 block truncate text-[10px] text-muted-foreground/80">
-                  {planMode ? "on" : `${PLAN_COST} cr`}
+                  {planMode ? "on" : `est. ${planEstimatedCost} cr`}
                 </span>
               </button>
               <button
@@ -2641,7 +2774,7 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                   Chat
                 </span>
                 <span className="mt-1 block truncate text-[10px] text-muted-foreground/80">
-                  {chatMode ? "on" : `${CHAT_COST} cr`}
+                  {chatMode ? "on" : `est. ${chatEstimatedCost} cr`}
                 </span>
               </button>
               <button
@@ -2852,7 +2985,8 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                             disabled={aiBusy || outOfCredits}
                             className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90 transition disabled:opacity-50"
                           >
-                            <Hammer className="h-3.5 w-3.5" /> Build this plan ({GENERATE_COST} cr)
+                            <Hammer className="h-3.5 w-3.5" /> Build this plan (est.{" "}
+                            {buildEstimatedCost} cr)
                           </button>
                           <button
                             onClick={() =>
@@ -2880,8 +3014,8 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                           ) : (
                             <Bug className="h-3.5 w-3.5" />
                           )}
-                          Auto-fix {validationByMsg[m.id].errors.length} blocked ({GENERATE_COST}{" "}
-                          cr)
+                          Auto-fix {validationByMsg[m.id].errors.length} blocked (est.{" "}
+                          {buildEstimatedCost} cr)
                         </button>
                       )}
                       {!isUser &&
@@ -3028,12 +3162,13 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
             <div ref={chatEnd} />
           </div>
 
-          {outOfCredits && !(chatMode && credits !== null && credits >= CHAT_COST) ? (
+          {!isOwner && credits !== null && credits < currentEstimatedCost ? (
             <div className="shrink-0 border-t border-border p-3 space-y-2 bg-destructive/5">
               <p className="text-sm font-semibold text-destructive">You're out of credits</p>
               <p className="text-xs text-muted-foreground">
-                Each build costs {GENERATE_COST} credits. Your balance gets +10 free credits daily
-                every day at midnight UTC, or buy a pack now to keep building.
+                This request is estimated at {currentEstimatedCost} credits with{" "}
+                {currentReasoning.shortLabel} reasoning. Lower the reasoning level, choose a cheaper
+                model, or buy a pack to keep building.
               </p>
               <Link
                 to="/pricing"
@@ -3091,7 +3226,7 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                             setPrompt(
                               "Generate a detailed 1-to-1 Roblox building replica from my attached image. Match the architecture, roof, colors, materials, windows, doors, trim, scale, and visible details. Build it as a complete Model under Workspace/Map/Buildings with ground, spawn, lighting, and many anchored parts.",
                             );
-                            setThinking(true);
+                            setReasoning("deep");
                             fileInputRef.current?.click();
                           } else if (tpl === "Screenshot to Game") {
                             startScreenshotToGameTool();
@@ -3102,13 +3237,13 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                             );
                           } else if (tpl === "Plan next features") {
                             setChatMode(true);
-                            setThinking(true);
+                            setReasoning("deep");
                             setPrompt(
                               "Review this project and suggest what I should build next. Organize the recommendations into high-impact features, quick polish tasks, testing steps, and the best next command to send BloxSmith.",
                             );
                           } else if (tpl === "Improve this script") {
                             setChatMode(true);
-                            setThinking(true);
+                            setReasoning("deep");
                             setPrompt(
                               "Help me improve my current Roblox scripts. Look for bugs, security issues, organization problems, performance risks, and copy-ready fixes I can apply.",
                             );
@@ -3140,6 +3275,51 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                     building and edits are disabled. Ask the project owner to make you an editor.
                   </div>
                 )}
+                <div className="mb-2 rounded-xl border border-border/50 bg-surface/35 px-3 py-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <Brain className="h-3.5 w-3.5 text-primary" />
+                        <span className="text-xs font-semibold text-foreground">
+                          {currentReasoning.label}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
+                        {currentReasoning.description}
+                      </p>
+                    </div>
+                    <div className="shrink-0 rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 text-[11px] font-bold text-primary-glow">
+                      Est. {currentEstimatedCost} cr
+                    </div>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={REASONING_LEVELS.length - 1}
+                    step={1}
+                    value={REASONING_LEVELS.findIndex((level) => level.id === reasoningLevel)}
+                    onChange={(e) => setReasoning(REASONING_LEVELS[Number(e.target.value)].id)}
+                    className="mt-2 h-2 w-full accent-primary"
+                    aria-label="AI reasoning level"
+                  />
+                  <div className="mt-1 grid grid-cols-4 gap-1 text-[9px] text-muted-foreground">
+                    {REASONING_LEVELS.map((level) => (
+                      <button
+                        key={level.id}
+                        type="button"
+                        onClick={() => setReasoning(level.id)}
+                        className={`truncate rounded px-1 py-0.5 text-center transition ${
+                          reasoningLevel === level.id
+                            ? "bg-primary/15 font-semibold text-primary-glow"
+                            : "hover:bg-surface"
+                        }`}
+                        title={level.label}
+                      >
+                        {level.shortLabel}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 {!chatMode && canEdit && (
                   <div className="mb-2 rounded-lg border border-border/50 bg-surface/35 px-2 py-1.5 sm:px-2.5 sm:py-2">
                     <button
@@ -3151,6 +3331,24 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                     >
                       🧭 Auto-Arrange Placement
                     </button>
+                  </div>
+                )}
+                {showToolboxPanel && (
+                  <div className="mb-2 max-h-[420px] overflow-y-auto rounded-xl border border-border/60 bg-background/50 p-2">
+                    <div className="mb-2 flex items-center justify-between gap-2 px-1">
+                      <div className="text-xs font-semibold text-foreground">
+                        AI-powered Roblox Toolbox
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowToolboxPanel(false)}
+                        className="rounded-md p-1 text-muted-foreground hover:bg-surface hover:text-foreground"
+                        title="Close toolbox"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                    <ToolboxAssetPicker compact onAdd={addToolboxAssetToGame} />
                   </div>
                 )}
                 {msgQueue.length > 0 && (
@@ -3331,9 +3529,15 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                   <div className="flex items-center gap-1 overflow-x-auto no-scrollbar -mx-1 px-1 min-w-0">
                     <button
                       type="button"
-                      onClick={() => setThinking((v) => !v)}
-                      title={thinking ? "Thinking mode on" : "Thinking mode off"}
-                      className={`h-8 w-8 grid place-items-center rounded-lg transition ${thinking ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground hover:bg-surface"}`}
+                      onClick={() =>
+                        setReasoning(shouldUseThinking(reasoningLevel) ? "balanced" : "deep")
+                      }
+                      title={
+                        shouldUseThinking(reasoningLevel)
+                          ? "Deep reasoning on"
+                          : "Switch to Deep reasoning"
+                      }
+                      className={`h-8 w-8 grid place-items-center rounded-lg transition ${shouldUseThinking(reasoningLevel) ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground hover:bg-surface"}`}
                     >
                       <Brain className="h-4 w-4" />
                     </button>
@@ -3411,6 +3615,20 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                     </button>
                     <button
                       type="button"
+                      onClick={() => setShowToolboxPanel((v) => !v)}
+                      title="Search Roblox Toolbox assets and add the exact selected asset to Studio"
+                      disabled={!canEdit}
+                      className={`inline-flex h-8 items-center gap-1 rounded-lg border px-2 transition disabled:opacity-40 ${
+                        showToolboxPanel
+                          ? "border-primary/40 bg-primary/10 text-primary"
+                          : "border-border text-muted-foreground hover:bg-surface hover:text-foreground"
+                      }`}
+                    >
+                      <Box className="h-4 w-4" />
+                      <span className="hidden text-[11px] font-medium sm:inline">Toolbox</span>
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => setWebSearch((v) => !v)}
                       title={
                         webSearch
@@ -3438,10 +3656,10 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                       className="inline-flex h-8 items-center gap-2 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground hover:opacity-90 transition disabled:opacity-30"
                       title={
                         chatMode
-                          ? `Send chat · ${CHAT_COST} cr`
+                          ? `Send chat · est. ${chatEstimatedCost} cr`
                           : planMode
-                            ? `Generate plan · ${PLAN_COST} cr`
-                            : `Build · ${GENERATE_COST} cr`
+                            ? `Generate plan · est. ${planEstimatedCost} cr`
+                            : `Build · est. ${buildEstimatedCost} cr`
                       }
                     >
                       <Send className="h-3.5 w-3.5" />
@@ -3578,11 +3796,11 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
 
                 <span className="text-[10px] text-muted-foreground whitespace-nowrap">
                   {chatMode
-                    ? `${CHAT_COST} cr / chat`
+                    ? `est. ${chatEstimatedCost} cr / chat`
                     : planMode
-                      ? `${PLAN_COST} cr / plan`
-                      : `${GENERATE_COST} cr / build`}
-                  {thinking ? " · deeper" : ""}
+                      ? `est. ${planEstimatedCost} cr / plan`
+                      : `est. ${buildEstimatedCost} cr / build`}
+                  {` · ${currentReasoning.shortLabel}`}
                 </span>
               </div>
             </div>
@@ -3637,7 +3855,7 @@ After the actions, write a SHORT message: what you set up, then "Press Play (F5)
                 <span className="text-muted-foreground/60">Mode:</span>{" "}
                 <span className="text-foreground/90 normal-case">
                   {chatMode ? "Chat" : planMode ? "Plan" : "Build"}
-                  {thinking ? " + Think" : ""}
+                  {` + ${currentReasoning.shortLabel}`}
                   {webSearch ? " + Web" : ""}
                 </span>
               </span>

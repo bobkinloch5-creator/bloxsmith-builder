@@ -3,7 +3,14 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { getNeokensApiKey } from "@/lib/neokens-config.server";
 import { stripModelReasoning, looksLikeModelReasoning } from "@/lib/utils";
 import { extractBuildJson } from "@/lib/build-json";
+import {
+  applyReasoningCreditMultiplier,
+  normalizeReasoningLevel,
+  shouldUseThinking,
+} from "@/lib/reasoning";
 import { z } from "zod";
+
+const ReasoningLevelSchema = z.enum(["fast", "balanced", "deep", "maximum"]).default("balanced");
 
 const InputSchema = z.object({
   projectId: z.string().uuid(),
@@ -11,6 +18,7 @@ const InputSchema = z.object({
   mode: z.enum(["chat", "generate"]).default("generate"),
   preview: z.boolean().default(true),
   thinking: z.boolean().default(false),
+  reasoningLevel: ReasoningLevelSchema,
   mapStrategy: z.enum(["toolbox", "custom"]).nullish(),
   imageDataUrl: z
     .string()
@@ -1992,8 +2000,19 @@ export const generateWithAI = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => InputSchema.parse(input))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const { projectId, prompt, mode, preview, imageDataUrl, imageDataUrls, thinking, mapStrategy } =
-      data;
+    const {
+      projectId,
+      prompt,
+      mode,
+      preview,
+      imageDataUrl,
+      imageDataUrls,
+      thinking,
+      reasoningLevel: rawReasoningLevel,
+      mapStrategy,
+    } = data;
+    const reasoningLevel = normalizeReasoningLevel(rawReasoningLevel, thinking);
+    const effectiveThinking = thinking || shouldUseThinking(reasoningLevel);
     const visionImages = Array.from(
       new Set([...(imageDataUrls ?? []), ...(imageDataUrl ? [imageDataUrl] : [])]),
     ).slice(0, 4);
@@ -2009,7 +2028,8 @@ export const generateWithAI = createServerFn({ method: "POST" })
       source: `project_${mode}`,
       metadata: {
         projectId,
-        thinking: !!thinking,
+        thinking: !!effectiveThinking,
+        reasoningLevel,
         hasImage: visionImages.length > 0,
         imageCount: visionImages.length,
       },
@@ -2017,13 +2037,6 @@ export const generateWithAI = createServerFn({ method: "POST" })
 
     const baseCost = mode === "generate" ? 3 : 1;
     let cost = baseCost;
-
-    if (!isOwner) {
-      const { error: spendErr } = await supabase.rpc("spend_credits_atomic", { _amount: baseCost });
-      if (spendErr) {
-        throw new Error("Not enough credits. Buy more on the Pricing page.");
-      }
-    }
 
     const { generateText, Output, stepCountIs } = await import("ai");
     const { SYSTEM_PROMPT, SLIM_SYSTEM_PROMPT } = await import("./ai-gateway.server");
@@ -2073,7 +2086,7 @@ export const generateWithAI = createServerFn({ method: "POST" })
         userId,
         projectId,
         kind: routingKind,
-        thinking,
+        thinking: effectiveThinking,
       });
       const { enforceExpensiveModelLimit } = await import("./ai-usage-limits.server");
       await enforceExpensiveModelLimit({
@@ -2083,33 +2096,26 @@ export const generateWithAI = createServerFn({ method: "POST" })
         modelName: resolved.modelName,
       });
     } catch (e) {
-      if (!isOwner)
-        await supabase.rpc("refund_credits", {
-          _amount: baseCost,
-          _reason: "ai gateway not configured",
-        });
       throw e;
     }
 
-    // Tier-based surcharge — higher models charge more credits per generation.
-    const totalCost = applyModelCreditMultiplier(baseCost, resolved.modelName);
-    const surcharge = totalCost - baseCost;
-    if (!isOwner && surcharge > 0) {
-      const { error: surErr } = await supabase.rpc("spend_credits_atomic", { _amount: surcharge });
-      if (surErr) {
-        await supabase.rpc("refund_credits", {
-          _amount: baseCost,
-          _reason: "tier surcharge unaffordable",
-        });
+    // Model tier + reasoning level decide the final up-front estimate and charge.
+    const modelCost = applyModelCreditMultiplier(baseCost, resolved.modelName);
+    const totalCost = applyReasoningCreditMultiplier(modelCost, reasoningLevel);
+    if (!isOwner) {
+      const { error: spendErr } = await supabase.rpc("spend_credits_atomic", {
+        _amount: totalCost,
+      });
+      if (spendErr) {
         throw new Error(
-          `Not enough credits — model ${resolved.modelName} costs ${totalCost} credits. Pick a cheaper model or buy more on the Pricing page.`,
+          `Not enough credits — ${resolved.modelName} with ${reasoningLevel} reasoning costs ${totalCost} credits. Pick a lower reasoning level, a cheaper model, or buy more on the Pricing page.`,
         );
       }
     }
     cost = totalCost;
 
     let profile = getModelProfile(resolved.provider, resolved.modelName, {
-      thinking,
+      thinking: effectiveThinking,
       heavyBuild: isComplex,
     });
 
@@ -2274,7 +2280,7 @@ export const generateWithAI = createServerFn({ method: "POST" })
       // time for the fast gemini-3-flash retry (35s) + template fallback. An
       // abort now recovers instead of hard-failing.
       const reasoning =
-        thinking ||
+        effectiveThinking ||
         /thinking|reason|codex|opus|sonnet/.test(String(resolved.modelName).toLowerCase());
       timeoutMs = isComplex
         ? Math.min(Math.max(profile.timeoutMs, reasoning ? 60_000 : 48_000), 70_000)
@@ -2702,6 +2708,7 @@ export const generateWithAI = createServerFn({ method: "POST" })
         output: result.message,
         text: result.message,
         content: result.message,
+        creditsUsed: isOwner || (result as any)._fallbackNoCharge ? 0 : cost,
         generationId: genRow?.id ?? null,
         preview: true,
         status: "pending",
@@ -2760,6 +2767,7 @@ export const generateWithAI = createServerFn({ method: "POST" })
       output: result.message,
       text: result.message,
       content: result.message,
+      creditsUsed: isOwner || (result as any)._fallbackNoCharge ? 0 : cost,
       generationId: genRow?.id ?? null,
       preview: false,
       status: "executing",
@@ -2866,6 +2874,7 @@ const PlanInputSchema = z.object({
   projectId: z.string().uuid(),
   prompt: z.string().min(1).max(8000),
   thinking: z.boolean().default(false),
+  reasoningLevel: ReasoningLevelSchema,
   imageDataUrl: z
     .string()
     .regex(/^data:image\/(png|jpeg|jpg|webp|gif);base64,/, "Must be a data:image base64 URL")
@@ -2878,7 +2887,9 @@ export const planBuild = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => PlanInputSchema.parse(input))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const { projectId, prompt, imageDataUrl, thinking } = data;
+    const { projectId, prompt, imageDataUrl, thinking, reasoningLevel: rawReasoningLevel } = data;
+    const reasoningLevel = normalizeReasoningLevel(rawReasoningLevel, thinking);
+    const effectiveThinking = thinking || shouldUseThinking(reasoningLevel);
     await assertProjectOwner(supabase, projectId, userId);
 
     const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", userId);
@@ -2888,16 +2899,10 @@ export const planBuild = createServerFn({ method: "POST" })
       userId,
       supabase,
       source: "project_plan",
-      metadata: { projectId, thinking: !!thinking, hasImage: !!imageDataUrl },
+      metadata: { projectId, thinking: !!effectiveThinking, reasoningLevel, hasImage: !!imageDataUrl },
     });
 
     const PLAN_COST = 1;
-    if (!isOwner) {
-      const { error: spendErr } = await supabase.rpc("spend_credits_atomic", {
-        _amount: PLAN_COST,
-      });
-      if (spendErr) throw new Error("Not enough credits. Buy more on the Pricing page.");
-    }
 
     const { generateText } = await import("ai");
     const { resolveBuiltInGateway } = await import("./ai-providers.server");
@@ -2909,31 +2914,24 @@ export const planBuild = createServerFn({ method: "POST" })
     let planTotalCost = PLAN_COST;
     try {
       const planKind = isSmartFullPromptRequest(prompt, "plan") || imageDataUrl ? "build" : "fast";
-      const builtIn = resolveBuiltInGateway({ kind: planKind, thinking });
+      const builtIn = resolveBuiltInGateway({ kind: planKind, thinking: effectiveThinking });
       model = builtIn.model;
       const { applyModelCreditMultiplier } = await import("./ai-models");
-      planTotalCost = applyModelCreditMultiplier(PLAN_COST, builtIn.modelName);
-      const planSurcharge = planTotalCost - PLAN_COST;
-      if (!isOwner && planSurcharge > 0) {
-        const { error: surErr } = await supabase.rpc("spend_credits_atomic", {
-          _amount: planSurcharge,
+      planTotalCost = applyReasoningCreditMultiplier(
+        applyModelCreditMultiplier(PLAN_COST, builtIn.modelName),
+        reasoningLevel,
+      );
+      if (!isOwner) {
+        const { error: spendErr } = await supabase.rpc("spend_credits_atomic", {
+          _amount: planTotalCost,
         });
-        if (surErr) {
-          await supabase.rpc("refund_credits", {
-            _amount: PLAN_COST,
-            _reason: "tier surcharge unaffordable",
-          });
+        if (spendErr) {
           throw new Error(
-            `Not enough credits — planning with ${builtIn.modelName} costs ${planTotalCost} credits. Buy more on the Pricing page.`,
+            `Not enough credits — planning with ${builtIn.modelName} at ${reasoningLevel} reasoning costs ${planTotalCost} credits. Pick a lower reasoning level or buy more on the Pricing page.`,
           );
         }
       }
     } catch (e) {
-      if (!isOwner)
-        await supabase.rpc("refund_credits", {
-          _amount: PLAN_COST,
-          _reason: "ai gateway not configured",
-        });
       throw e;
     }
 
@@ -3005,7 +3003,7 @@ Keep it under ~400 words. Be specific to the user's request and existing project
         prompt: planUserText,
         maxOutputTokens: 1200,
         maxRetries: 0,
-        timeout: { totalMs: thinking ? 18_000 : 12_000 },
+        timeout: { totalMs: effectiveThinking ? 18_000 : 12_000 },
       });
       text = stripModelReasoning(out) || out;
       await rememberProjectInteraction(supabase, {
@@ -3044,10 +3042,11 @@ const ChatInputSchema = z.object({
         role: z.enum(["user", "assistant"]),
         content: z.string().max(20000),
       }),
-    )
+  )
     .max(20)
     .optional(),
   thinking: z.boolean().default(false),
+  reasoningLevel: ReasoningLevelSchema,
   // Vision: data URLs (e.g. "data:image/png;base64,...") captured from the
   // chat composer's attach-image button. Limited to 4 images, ~6 MB each
   // after base64 encoding to stay within model + gateway limits.
@@ -3113,7 +3112,10 @@ export const chatWithAI = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => ChatInputSchema.parse(input))
   .handler(async ({ data, context }) => {
     const { supabase, userId } = context;
-    const { projectId, prompt, history, thinking, attachments } = data;
+    const { projectId, prompt, history, thinking, reasoningLevel: rawReasoningLevel, attachments } =
+      data;
+    const reasoningLevel = normalizeReasoningLevel(rawReasoningLevel, thinking);
+    const effectiveThinking = thinking || shouldUseThinking(reasoningLevel);
     // Chat is read-only (never queues files/actions), so any collaborator —
     // including viewers — may ask the AI about a shared project.
     if (projectId) await assertProjectOwner(supabase, projectId, userId, { allowViewer: true });
@@ -3127,19 +3129,13 @@ export const chatWithAI = createServerFn({ method: "POST" })
       source: "project_chat",
       metadata: {
         projectId: projectId ?? null,
-        thinking: !!thinking,
+        thinking: !!effectiveThinking,
+        reasoningLevel,
         attachments: attachments?.length ?? 0,
       },
     });
 
     const CHAT_COST = 1;
-    if (!isOwner) {
-      const { error: spendErr } = await supabase.rpc("spend_credits_atomic", {
-        _amount: CHAT_COST,
-      });
-      if (spendErr) throw new Error("Not enough credits. Buy more on the Pricing page.");
-    }
-
     const {
       getModelProfile,
       recordProviderHealth,
@@ -3152,12 +3148,12 @@ export const chatWithAI = createServerFn({ method: "POST" })
     const { buildSmartContextBlock } = await import("./ai-smartest-builder-core");
     let resolved;
     try {
-      const chatKind: "chat" | "large" = thinking ? "large" : "chat";
+      const chatKind: "chat" | "large" = effectiveThinking ? "large" : "chat";
       resolved = await resolveAiGateway({
         userId,
         projectId: projectId ?? null,
         kind: chatKind,
-        thinking,
+        thinking: effectiveThinking,
       });
       const { enforceExpensiveModelLimit } = await import("./ai-usage-limits.server");
       await enforceExpensiveModelLimit({
@@ -3167,29 +3163,23 @@ export const chatWithAI = createServerFn({ method: "POST" })
         modelName: resolved.modelName,
       });
     } catch (e) {
-      if (!isOwner)
-        await supabase.rpc("refund_credits", {
-          _amount: CHAT_COST,
-          _reason: "ai gateway not configured",
-        });
       throw e;
     }
 
-    // Tier-based surcharge — pricier chat models charge more credits.
+    // Tier + reasoning-based charge — calculated before the request runs so
+    // users can compare it with the UI estimate.
     const { applyModelCreditMultiplier: applyChatMult } = await import("./ai-models");
-    const chatTotal = applyChatMult(CHAT_COST, resolved.modelName);
-    const chatSurcharge = chatTotal - CHAT_COST;
-    if (!isOwner && chatSurcharge > 0) {
-      const { error: surErr } = await supabase.rpc("spend_credits_atomic", {
-        _amount: chatSurcharge,
+    const chatTotal = applyReasoningCreditMultiplier(
+      applyChatMult(CHAT_COST, resolved.modelName),
+      reasoningLevel,
+    );
+    if (!isOwner) {
+      const { error: spendErr } = await supabase.rpc("spend_credits_atomic", {
+        _amount: chatTotal,
       });
-      if (surErr) {
-        await supabase.rpc("refund_credits", {
-          _amount: CHAT_COST,
-          _reason: "tier surcharge unaffordable",
-        });
+      if (spendErr) {
         throw new Error(
-          `Not enough credits — chat with ${resolved.modelName} costs ${chatTotal} credits. Pick a cheaper model or buy more on the Pricing page.`,
+          `Not enough credits — chat with ${resolved.modelName} at ${reasoningLevel} reasoning costs ${chatTotal} credits. Pick a lower reasoning level, a cheaper model, or buy more on the Pricing page.`,
         );
       }
     }
@@ -3329,14 +3319,14 @@ ${smartChatBlock}${includeProject && memoryBlock ? `\n\n${memoryBlock}` : ""}${i
       {
         label: "primary",
         resolved,
-        historyTurns: getModelProfile(resolved.provider, resolved.modelName, { thinking })
+        historyTurns: getModelProfile(resolved.provider, resolved.modelName, { thinking: effectiveThinking })
           .historyTurns,
-        historyChars: getModelProfile(resolved.provider, resolved.modelName, { thinking })
+        historyChars: getModelProfile(resolved.provider, resolved.modelName, { thinking: effectiveThinking })
           .historyChars,
         includeProject: true,
-        maxOutputTokens: getModelProfile(resolved.provider, resolved.modelName, { thinking })
+        maxOutputTokens: getModelProfile(resolved.provider, resolved.modelName, { thinking: effectiveThinking })
           .chatOutputTokens,
-        timeoutMs: getModelProfile(resolved.provider, resolved.modelName, { thinking })
+        timeoutMs: getModelProfile(resolved.provider, resolved.modelName, { thinking: effectiveThinking })
           .chatTimeoutMs,
       },
       {
@@ -3358,22 +3348,27 @@ ${smartChatBlock}${includeProject && memoryBlock ? `\n\n${memoryBlock}` : ""}${i
 
     try {
       const builtInCandidates = resolveBuiltInGatewayCandidates({
-        kind: thinking ? "large" : "chat",
-        thinking,
+        kind: effectiveThinking ? "large" : "chat",
+        thinking: effectiveThinking,
       });
       for (const builtIn of builtInCandidates) {
         if (builtIn.modelName === resolved.modelName && builtIn.provider === resolved.provider) {
           continue;
         }
-        const builtInProfile = getModelProfile(builtIn.provider, builtIn.modelName, { thinking });
+        const builtInProfile = getModelProfile(builtIn.provider, builtIn.modelName, {
+          thinking: effectiveThinking,
+        });
         attempts.push({
           label: "built-in-fallback",
           resolved: builtIn,
           historyTurns: Math.min(builtInProfile.historyTurns, 4),
           historyChars: Math.min(builtInProfile.historyChars, 900),
           includeProject: false,
-          maxOutputTokens: Math.min(builtInProfile.chatOutputTokens, thinking ? 2_200 : 1_400),
-          timeoutMs: Math.min(builtInProfile.chatTimeoutMs, thinking ? 32_000 : 16_000),
+          maxOutputTokens: Math.min(
+            builtInProfile.chatOutputTokens,
+            effectiveThinking ? 2_200 : 1_400,
+          ),
+          timeoutMs: Math.min(builtInProfile.chatTimeoutMs, effectiveThinking ? 32_000 : 16_000),
         });
       }
     } catch {
@@ -3387,7 +3382,7 @@ ${smartChatBlock}${includeProject && memoryBlock ? `\n\n${memoryBlock}` : ""}${i
       for (let i = 0; i < attempts.length; i++) {
         const attempt = attempts[i];
         const profile = getModelProfile(attempt.resolved.provider, attempt.resolved.modelName, {
-          thinking,
+          thinking: effectiveThinking,
         });
         const tools = !toolsDisabled && profile.supportsTools ? chatTools : {};
         const includeImages = !!attachments?.length && profile.supportsVision;
@@ -3406,7 +3401,7 @@ ${smartChatBlock}${includeProject && memoryBlock ? `\n\n${memoryBlock}` : ""}${i
             messages,
             attempt.timeoutMs,
             attempt.maxOutputTokens,
-            Math.min(profile.stopSteps, thinking ? 5 : 3),
+            Math.min(profile.stopSteps, effectiveThinking ? 5 : 3),
             tools,
           );
           await recordProviderHealth({
